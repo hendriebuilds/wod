@@ -8,11 +8,11 @@ RUN npm run build
 
 # Stage 2: Bot + API server
 FROM node:22-alpine
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json .
 RUN npm install --omit=dev
 COPY index.js .
-COPY settings.json .
 COPY config.json .
 COPY --from=admin-builder /admin/dist ./admin/dist
 EXPOSE 3001
