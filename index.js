@@ -11,22 +11,27 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import * as dotenv from "dotenv";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
- 
+import express from "express";
+import session from "express-session";
+import cors from "cors";
+
 dotenv.config();
- 
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VRAGEN_PAD = join(__dirname, "vragen.json");
- 
+const INSTELLINGEN_PAD = join(__dirname, "settings.json");
+const CONFIG_PAD = join(__dirname, "config.json");
+
 // ─── Vragen laden & opslaan ────────────────────────────────────────────────────
- 
+
 let waarheidVragen = [];
 let doenOpdrachten = [];
 const gebruikteWaarheid = new Set();
 const gebruikteDoen = new Set();
- 
+
 function laadVragen() {
   try {
     const data = JSON.parse(readFileSync(VRAGEN_PAD, "utf-8"));
@@ -44,7 +49,7 @@ function laadVragen() {
     return false;
   }
 }
- 
+
 function slaVragenOp() {
   try {
     writeFileSync(VRAGEN_PAD, JSON.stringify({ waarheid: waarheidVragen, doen: doenOpdrachten }, null, 2), "utf-8");
@@ -54,29 +59,102 @@ function slaVragenOp() {
     return false;
   }
 }
- 
+
 laadVragen();
- 
+
+// ─── Instellingen ──────────────────────────────────────────────────────────────
+
+const instellingen = { cooldownMs: 1500 };
+
+function laadInstellingen() {
+  try {
+    const data = JSON.parse(readFileSync(INSTELLINGEN_PAD, "utf-8"));
+    Object.assign(instellingen, data);
+    console.log("✅ Instellingen geladen.");
+  } catch {
+    console.log("ℹ️ Geen settings.json, standaardwaarden gebruikt.");
+  }
+}
+
+function slaInstellingenOp() {
+  try {
+    writeFileSync(INSTELLINGEN_PAD, JSON.stringify(instellingen, null, 2), "utf-8");
+  } catch (err) {
+    console.error("❌ Fout bij opslaan instellingen:", err.message);
+  }
+}
+
+laadInstellingen();
+
+// ─── Configuratie ──────────────────────────────────────────────────────────────
+
+const config = {
+  redirectUri: "http://localhost:3001/auth/callback",
+  frontendUrl: "http://localhost:3001",
+};
+
+function laadConfig() {
+  try {
+    const data = JSON.parse(readFileSync(CONFIG_PAD, "utf-8"));
+    Object.assign(config, data);
+    console.log("✅ Configuratie geladen.");
+  } catch {
+    console.log("ℹ️ Geen config.json, standaardwaarden gebruikt.");
+  }
+}
+
+function slaConfigOp() {
+  try {
+    writeFileSync(CONFIG_PAD, JSON.stringify(config, null, 2), "utf-8");
+  } catch (err) {
+    console.error("❌ Fout bij opslaan configuratie:", err.message);
+  }
+}
+
+laadConfig();
+
 // ─── Statistieken ──────────────────────────────────────────────────────────────
- 
+
 const sessieStart = new Date();
 let aantalWaarheid = 0;
 let aantalDoen = 0;
 const rerollTeller = new Map(); // userId -> { naam, teller }
- 
+
 function registreerReroll(user) {
   const huidig = rerollTeller.get(user.id) ?? { naam: user.displayName, teller: 0 };
   rerollTeller.set(user.id, { naam: user.displayName, teller: huidig.teller + 1 });
 }
- 
+
 function resetStatistieken() {
   aantalWaarheid = 0;
   aantalDoen = 0;
   rerollTeller.clear();
 }
- 
+
+// ─── Beurtrotatie ──────────────────────────────────────────────────────────────
+
+const beurtenLijst = []; // [{ id, naam }]
+let huidigeBeurt = 0;
+
+function getHuidigeSpelerNaam() {
+  if (beurtenLijst.length === 0) return null;
+  return beurtenLijst[huidigeBeurt].naam;
+}
+
+function advanceerBeurt() {
+  if (beurtenLijst.length === 0) return null;
+  huidigeBeurt = (huidigeBeurt + 1) % beurtenLijst.length;
+  return beurtenLijst[huidigeBeurt];
+}
+
+function buildBeurtenLijstTekst() {
+  return beurtenLijst
+    .map((s, i) => `${i === huidigeBeurt ? "▶️" : `${i + 1}.`} **${s.naam}**`)
+    .join("\n");
+}
+
 // ─── Vraag helpers ─────────────────────────────────────────────────────────────
- 
+
 function getVraag(lijst, gebruikte) {
   if (gebruikte.size >= lijst.length) {
     gebruikte.clear();
@@ -87,26 +165,40 @@ function getVraag(lijst, gebruikte) {
   gebruikte.add(index);
   return lijst[index];
 }
- 
+
+function haalVraagUitEmbed(description, lijst, gebruikte) {
+  if (!description) return;
+  const markerIdx = description.indexOf('\n\n> ');
+  if (markerIdx === -1) return;
+  const oudeVraag = description.slice(markerIdx + 4);
+  const oudeIndex = lijst.indexOf(oudeVraag);
+  if (oudeIndex !== -1) gebruikte.delete(oudeIndex);
+}
+
 // ─── Cooldown ──────────────────────────────────────────────────────────────────
- 
+
 const cooldowns = new Set();
- 
+
 function inCooldown(userId) {
   if (cooldowns.has(userId)) return true;
   cooldowns.add(userId);
-  setTimeout(() => cooldowns.delete(userId), 1500);
+  setTimeout(() => cooldowns.delete(userId), instellingen.cooldownMs);
   return false;
 }
- 
+
 // ─── Bot Setup ─────────────────────────────────────────────────────────────────
- 
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
- 
+
 const commands = [
   new SlashCommandBuilder()
     .setName("wod")
     .setDescription("Start een ronde Waarheid of Doen!")
+    .addUserOption(opt =>
+      opt.setName("speler")
+        .setDescription("Richt de vraag op een specifieke speler.")
+        .setRequired(false)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("waarheid")
@@ -127,6 +219,23 @@ const commands = [
         .setRequired(false)
         .setMinValue(1)
     )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("beurt")
+    .setDescription("Beheer de beurtrotatie.")
+    .addSubcommand(sub =>
+      sub.setName("toevoegen")
+        .setDescription("Voeg een speler toe aan de rotatie.")
+        .addUserOption(opt => opt.setName("speler").setDescription("De toe te voegen speler.").setRequired(true))
+    )
+    .addSubcommand(sub =>
+      sub.setName("verwijder")
+        .setDescription("Verwijder een speler uit de rotatie.")
+        .addUserOption(opt => opt.setName("speler").setDescription("De te verwijderen speler.").setRequired(true))
+    )
+    .addSubcommand(sub => sub.setName("lijst").setDescription("Bekijk de huidige rotatie."))
+    .addSubcommand(sub => sub.setName("reset").setDescription("Wis de rotatie."))
+    .addSubcommand(sub => sub.setName("volgende").setDescription("Sla de huidige speler over en ga naar de volgende."))
     .toJSON(),
   new SlashCommandBuilder()
     .setName("reload")
@@ -196,7 +305,7 @@ const commands = [
     )
     .toJSON(),
 ];
- 
+
 client.once("ready", async () => {
   console.log(`✅ Ingelogd als ${client.user.tag}`);
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
@@ -207,17 +316,18 @@ client.once("ready", async () => {
     console.error("❌ Fout bij registreren van commands:", err);
   }
 });
- 
+
 // ─── Embed Helpers ─────────────────────────────────────────────────────────────
- 
-function buildKiesEmbed(user) {
+
+function buildKiesEmbed(user, doelNaam = null) {
+  const naam = doelNaam ?? user.displayName;
   return new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle("🎮 Waarheid of Doen")
-    .setDescription(`**${user.displayName}**, wat kies jij?\n\nKlik op een knop hieronder om te beginnen!`)
+    .setDescription(`Het is **${naam}**'s beurt! Kies een optie hieronder.`)
     .setFooter({ text: "Waarheid of Doen • Durf jij het aan?" });
 }
- 
+
 function buildWaarheidEmbed(vraag, user, isReroll = false) {
   return new EmbedBuilder()
     .setColor(0x5865f2)
@@ -226,7 +336,7 @@ function buildWaarheidEmbed(vraag, user, isReroll = false) {
     .setFooter({ text: `Waarheid of Doen • ${gebruikteWaarheid.size}/${waarheidVragen.length} vragen gehad` })
     .setTimestamp();
 }
- 
+
 function buildDoenEmbed(opdracht, user, isReroll = false) {
   return new EmbedBuilder()
     .setColor(0xed4245)
@@ -235,7 +345,25 @@ function buildDoenEmbed(opdracht, user, isReroll = false) {
     .setFooter({ text: `Waarheid of Doen • ${gebruikteDoen.size}/${doenOpdrachten.length} opdrachten gehad` })
     .setTimestamp();
 }
- 
+
+function buildStrafWaarheidEmbed(vraag, user) {
+  return new EmbedBuilder()
+    .setColor(0xffa500)
+    .setTitle("🔵 Waarheid — Strafvraag")
+    .setDescription(`**${user.displayName}** heeft gepast! Hier is je strafvraag:\n\n> ${vraag}`)
+    .setFooter({ text: `Waarheid of Doen • ${gebruikteWaarheid.size}/${waarheidVragen.length} vragen gehad` })
+    .setTimestamp();
+}
+
+function buildStrafDoenEmbed(opdracht, user) {
+  return new EmbedBuilder()
+    .setColor(0xffa500)
+    .setTitle("🔴 Doen — Strafopdracht")
+    .setDescription(`**${user.displayName}** heeft gepast! Hier is je strafopdracht:\n\n> ${opdracht}`)
+    .setFooter({ text: `Waarheid of Doen • ${gebruikteDoen.size}/${doenOpdrachten.length} opdrachten gehad` })
+    .setTimestamp();
+}
+
 function buildKiesButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("kies_waarheid").setLabel("🔵 Waarheid").setStyle(ButtonStyle.Primary),
@@ -243,7 +371,7 @@ function buildKiesButtons() {
     new ButtonBuilder().setCustomId("kies_random").setLabel("🎲 Verrassing!").setStyle(ButtonStyle.Secondary)
   );
 }
- 
+
 function buildDisabledKiesButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("kies_waarheid").setLabel("🔵 Waarheid").setStyle(ButtonStyle.Primary).setDisabled(true),
@@ -251,37 +379,37 @@ function buildDisabledKiesButtons() {
     new ButtonBuilder().setCustomId("kies_random").setLabel("🎲 Verrassing!").setStyle(ButtonStyle.Secondary).setDisabled(true)
   );
 }
- 
+
 function buildActieButtons(type) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`reroll_${type}`).setLabel("🎲 Reroll").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`passen_${type}`).setLabel("❌ Passen").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId("nieuwe_ronde").setLabel("🔄 Nieuwe ronde").setStyle(ButtonStyle.Success)
   );
 }
- 
+
 function buildStatistiekenEmbed() {
   const totaal = aantalWaarheid + aantalDoen;
   const duur = Math.floor((new Date() - sessieStart) / 60000);
   const uren = Math.floor(duur / 60);
   const minuten = duur % 60;
   const duurTekst = uren > 0 ? `${uren}u ${minuten}m` : `${minuten}m`;
- 
-  // Reroll ranglijst sorteren
+
   const rerollLijst = [...rerollTeller.entries()]
     .sort((a, b) => b[1].teller - a[1].teller)
     .map(([, data], i) => `**${i + 1}.** ${data.naam} — ${data.teller}x reroll`)
     .join("\n");
- 
+
   return new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle("📊 Statistieken")
     .addFields(
       { name: "⏱️ Sessieduur", value: duurTekst, inline: true },
       { name: "🎮 Totaal gespeeld", value: `${totaal} rondes`, inline: true },
-      { name: "\u200B", value: "\u200B", inline: true },
+      { name: "​", value: "​", inline: true },
       { name: "🔵 Waarheid", value: `${aantalWaarheid}x`, inline: true },
       { name: "🔴 Doen", value: `${aantalDoen}x`, inline: true },
-      { name: "\u200B", value: "\u200B", inline: true },
+      { name: "​", value: "​", inline: true },
       {
         name: "🎲 Reroll ranglijst",
         value: rerollLijst || "Nog niemand gererolld!",
@@ -291,21 +419,21 @@ function buildStatistiekenEmbed() {
     .setFooter({ text: `Sessie gestart om ${sessieStart.toLocaleTimeString("nl-NL")}` })
     .setTimestamp();
 }
- 
+
 function buildLijstEmbeds(type) {
   const lijst = type === "waarheid" ? waarheidVragen : doenOpdrachten;
   const kleur = type === "waarheid" ? 0x5865f2 : 0xed4245;
   const emoji = type === "waarheid" ? "🔵" : "🔴";
   const label = type === "waarheid" ? "Waarheidsvragen" : "Doe-opdrachten";
- 
+
   if (lijst.length === 0) {
     return [new EmbedBuilder().setColor(kleur).setTitle(`${emoji} ${label}`).setDescription("Geen vragen gevonden.")];
   }
- 
+
   const embeds = [];
   let huidigeTekst = "";
   let startNummer = 1;
- 
+
   for (let i = 0; i < lijst.length; i++) {
     const regel = `**${i + 1}.** ${lijst[i]}\n`;
     if (huidigeTekst.length + regel.length > 3800) {
@@ -321,7 +449,7 @@ function buildLijstEmbeds(type) {
       huidigeTekst += regel;
     }
   }
- 
+
   embeds.push(
     new EmbedBuilder()
       .setColor(kleur)
@@ -329,23 +457,30 @@ function buildLijstEmbeds(type) {
       .setDescription(huidigeTekst.trim())
       .setFooter({ text: `Totaal: ${lijst.length}` })
   );
- 
+
   return embeds;
 }
- 
+
 // ─── Interaction Handler ───────────────────────────────────────────────────────
- 
+
 client.on("interactionCreate", async (interaction) => {
   const user = interaction.member ?? interaction.user;
- 
+
   // ── Slash Commands ──
   if (interaction.isChatInputCommand()) {
- 
+
     if (interaction.commandName === "wod") {
-      await interaction.reply({ embeds: [buildKiesEmbed(user)], components: [buildKiesButtons()] });
+      const doelLid = interaction.options.getMember("speler");
+      let doelNaam = null;
+      if (doelLid) {
+        doelNaam = doelLid.displayName;
+      } else if (beurtenLijst.length > 0) {
+        doelNaam = getHuidigeSpelerNaam();
+      }
+      await interaction.reply({ embeds: [buildKiesEmbed(user, doelNaam)], components: [buildKiesButtons()] });
       return;
     }
- 
+
     if (interaction.commandName === "waarheid") {
       const nummer = interaction.options.getInteger("nummer");
       if (nummer !== null) {
@@ -364,7 +499,7 @@ client.on("interactionCreate", async (interaction) => {
       }
       return;
     }
- 
+
     if (interaction.commandName === "doen") {
       const nummer = interaction.options.getInteger("nummer");
       if (nummer !== null) {
@@ -383,17 +518,103 @@ client.on("interactionCreate", async (interaction) => {
       }
       return;
     }
- 
+
+    if (interaction.commandName === "beurt") {
+      const sub = interaction.options.getSubcommand();
+
+      if (sub === "toevoegen") {
+        const doelUser = interaction.options.getUser("speler");
+        const doelLid = interaction.options.getMember("speler");
+        const naam = doelLid?.displayName ?? doelUser.username;
+        if (beurtenLijst.some(s => s.id === doelUser.id)) {
+          await interaction.reply({ content: `**${naam}** staat al in de rotatie.`, ephemeral: true });
+          return;
+        }
+        beurtenLijst.push({ id: doelUser.id, naam });
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("✅ Speler toegevoegd")
+            .setDescription(`**${naam}** is toegevoegd aan de rotatie.\n\n${buildBeurtenLijstTekst()}`)
+            .setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "verwijder") {
+        const doelUser = interaction.options.getUser("speler");
+        const idx = beurtenLijst.findIndex(s => s.id === doelUser.id);
+        if (idx === -1) {
+          await interaction.reply({ content: "Die speler staat niet in de rotatie.", ephemeral: true });
+          return;
+        }
+        const verwijderd = beurtenLijst.splice(idx, 1)[0];
+        if (huidigeBeurt >= beurtenLijst.length) huidigeBeurt = 0;
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("✅ Speler verwijderd")
+            .setDescription(`**${verwijderd.naam}** is verwijderd uit de rotatie.${beurtenLijst.length > 0 ? `\n\n${buildBeurtenLijstTekst()}` : ""}`)
+            .setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "lijst") {
+        if (beurtenLijst.length === 0) {
+          await interaction.reply({ content: "De rotatie is leeg. Voeg spelers toe met `/beurt toevoegen`.", ephemeral: true });
+          return;
+        }
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0xfee75c)
+            .setTitle("🔄 Beurtrotatie")
+            .setDescription(buildBeurtenLijstTekst())
+            .setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "reset") {
+        beurtenLijst.length = 0;
+        huidigeBeurt = 0;
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("✅ Rotatie gewist")
+            .setDescription("De beurtrotatie is gewist.")
+            .setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "volgende") {
+        if (beurtenLijst.length === 0) {
+          await interaction.reply({ content: "De rotatie is leeg.", ephemeral: true });
+          return;
+        }
+        const volgende = advanceerBeurt();
+        await interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0xfee75c)
+            .setTitle("🔄 Volgende speler")
+            .setDescription(`Het is nu **${volgende.naam}**'s beurt!\n\n${buildBeurtenLijstTekst()}`)
+            .setTimestamp()],
+        });
+        return;
+      }
+    }
+
     if (interaction.commandName === "statistieken") {
       await interaction.reply({ embeds: [buildStatistiekenEmbed()] });
       return;
     }
- 
+
     if (interaction.commandName === "reset") {
       gebruikteWaarheid.clear();
       gebruikteDoen.clear();
       resetStatistieken();
- 
+
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -405,7 +626,7 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
- 
+
     if (interaction.commandName === "reload") {
       const succes = laadVragen();
       await interaction.reply({
@@ -424,21 +645,21 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
- 
+
     if (interaction.commandName === "voeg-toe") {
       const type = interaction.options.getString("type");
       const tekst = interaction.options.getString("tekst").trim();
- 
+
       if (type === "waarheid") {
         waarheidVragen.push(tekst);
       } else {
         doenOpdrachten.push(tekst);
       }
- 
+
       const succes = slaVragenOp();
       const lijst = type === "waarheid" ? waarheidVragen : doenOpdrachten;
       const label = type === "waarheid" ? "waarheidsvraag" : "doe-opdracht";
- 
+
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -455,13 +676,13 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
- 
+
     if (interaction.commandName === "verwijder") {
       const type = interaction.options.getString("type");
       const nummer = interaction.options.getInteger("nummer");
       const lijst = type === "waarheid" ? waarheidVragen : doenOpdrachten;
       const label = type === "waarheid" ? "waarheidsvraag" : "doe-opdracht";
- 
+
       if (nummer > lijst.length) {
         await interaction.reply({
           content: `❌ Er is geen ${label} met nummer ${nummer}. Gebruik \`/lijst\` om de nummers te zien.`,
@@ -469,30 +690,28 @@ client.on("interactionCreate", async (interaction) => {
         });
         return;
       }
- 
-      const verwijderd = lijst.splice(nummer - 1, 1)[0];
-      gebruikteWaarheid.clear();
-      gebruikteDoen.clear();
- 
-      const succes = slaVragenOp();
- 
+
+      const tekst = lijst[nummer - 1];
+
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setColor(succes ? 0x57f287 : 0xed4245)
-            .setTitle(succes ? "🗑️ Verwijderd" : "❌ Opslaan mislukt")
-            .setDescription(
-              succes
-                ? `${label.charAt(0).toUpperCase() + label.slice(1)} #${nummer} verwijderd:\n\n> ${verwijderd}\n\n*(De nummers zijn opnieuw ingedeeld)*`
-                : "De vraag is verwijderd maar kon niet worden opgeslagen naar `vragen.json`."
-            )
+            .setColor(0xffa500)
+            .setTitle("⚠️ Bevestig verwijdering")
+            .setDescription(`Weet je zeker dat je ${label} #${nummer} wilt verwijderen?\n\n> ${tekst}`)
             .setTimestamp(),
+        ],
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`verwijder_ja_${type}_${nummer}`).setLabel("🗑️ Ja, verwijder").setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId("verwijder_nee").setLabel("❌ Annuleer").setStyle(ButtonStyle.Secondary)
+          ),
         ],
         ephemeral: true,
       });
       return;
     }
- 
+
     if (interaction.commandName === "lijst") {
       const type = interaction.options.getString("type");
       if (!type) {
@@ -504,11 +723,11 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
   }
- 
+
   // ── Buttons ──
   if (interaction.isButton()) {
     if (inCooldown(user.id)) return;
- 
+
     if (interaction.customId === "kies_waarheid") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
@@ -516,7 +735,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
       return;
     }
- 
+
     if (interaction.customId === "kies_doen") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
@@ -524,7 +743,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.followUp({ embeds: [buildDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
       return;
     }
- 
+
     if (interaction.customId === "kies_random") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       if (Math.random() < 0.5) {
@@ -538,29 +757,296 @@ client.on("interactionCreate", async (interaction) => {
       }
       return;
     }
- 
+
     if (interaction.customId === "reroll_waarheid") {
       registreerReroll(user);
+      haalVraagUitEmbed(interaction.message.embeds[0]?.description, waarheidVragen, gebruikteWaarheid);
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
-      await interaction.update({ embeds: [buildWaarheidEmbed(vraag, user, true)], components: [buildActieButtons("waarheid")] });
+      await interaction.deferUpdate();
+      await interaction.message.delete();
+      await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag, user, true)], components: [buildActieButtons("waarheid")] });
       return;
     }
- 
+
     if (interaction.customId === "reroll_doen") {
       registreerReroll(user);
+      haalVraagUitEmbed(interaction.message.embeds[0]?.description, doenOpdrachten, gebruikteDoen);
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
-      await interaction.update({ embeds: [buildDoenEmbed(opdracht, user, true)], components: [buildActieButtons("doen")] });
+      await interaction.deferUpdate();
+      await interaction.message.delete();
+      await interaction.followUp({ embeds: [buildDoenEmbed(opdracht, user, true)], components: [buildActieButtons("doen")] });
       return;
     }
- 
+
+    if (interaction.customId === "passen_waarheid") {
+      haalVraagUitEmbed(interaction.message.embeds[0]?.description, waarheidVragen, gebruikteWaarheid);
+      const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
+      await interaction.deferUpdate();
+      await interaction.message.delete();
+      await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+      return;
+    }
+
+    if (interaction.customId === "passen_doen") {
+      haalVraagUitEmbed(interaction.message.embeds[0]?.description, doenOpdrachten, gebruikteDoen);
+      const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
+      await interaction.deferUpdate();
+      await interaction.message.delete();
+      await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+      return;
+    }
+
     if (interaction.customId === "nieuwe_ronde") {
+      let doelNaam = null;
+      if (beurtenLijst.length > 0) {
+        doelNaam = advanceerBeurt().naam;
+      }
       await interaction.update({ components: [] });
-      await interaction.followUp({ embeds: [buildKiesEmbed(user)], components: [buildKiesButtons()] });
+      await interaction.followUp({ embeds: [buildKiesEmbed(user, doelNaam)], components: [buildKiesButtons()] });
+      return;
+    }
+
+    if (interaction.customId.startsWith("verwijder_ja_")) {
+      // customId formaat: verwijder_ja_{type}_{nummer}
+      const parts = interaction.customId.split("_");
+      const type = parts[2];
+      const nummer = parseInt(parts[3]);
+      const lijst = type === "waarheid" ? waarheidVragen : doenOpdrachten;
+      const label = type === "waarheid" ? "waarheidsvraag" : "doe-opdracht";
+
+      if (nummer > lijst.length) {
+        await interaction.update({
+          embeds: [new EmbedBuilder().setColor(0xed4245).setTitle("❌ Niet gevonden").setDescription(`${label} #${nummer} bestaat niet meer.`).setTimestamp()],
+          components: [],
+        });
+        return;
+      }
+
+      const verwijderd = lijst.splice(nummer - 1, 1)[0];
+      gebruikteWaarheid.clear();
+      gebruikteDoen.clear();
+      const succes = slaVragenOp();
+
+      await interaction.update({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(succes ? 0x57f287 : 0xed4245)
+            .setTitle(succes ? "🗑️ Verwijderd" : "❌ Opslaan mislukt")
+            .setDescription(
+              succes
+                ? `${label.charAt(0).toUpperCase() + label.slice(1)} #${nummer} verwijderd:\n\n> ${verwijderd}\n\n*(De nummers zijn opnieuw ingedeeld)*`
+                : "De vraag is verwijderd maar kon niet worden opgeslagen naar `vragen.json`."
+            )
+            .setTimestamp(),
+        ],
+        components: [],
+      });
+      return;
+    }
+
+    if (interaction.customId === "verwijder_nee") {
+      await interaction.update({
+        embeds: [new EmbedBuilder().setColor(0x57f287).setTitle("✅ Geannuleerd").setDescription("De verwijdering is geannuleerd.").setTimestamp()],
+        components: [],
+      });
       return;
     }
   }
 });
- 
+
+// ─── Admin API Server ──────────────────────────────────────────────────────────
+
+const app = express();
+const ADMIN_PORT = parseInt(process.env.ADMIN_PORT || "3001");
+const DISCORD_API = "https://discord.com/api/v10";
+
+// cors gebruikt config.frontendUrl op request-tijd zodat wijzigingen direct gelden
+app.use(cors({ origin: (_, cb) => cb(null, config.frontendUrl), credentials: true }));
+app.use(express.json());
+app.use(session({
+  secret: process.env.SESSION_SECRET || "changeme-zet-een-echt-secret-in-.env",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 },
+}));
+
+function requireAuth(req, res, next) {
+  if (!req.session.user) return res.status(401).json({ error: "Niet ingelogd" });
+  next();
+}
+
+// ── Auth ──
+
+app.get("/auth/login", (req, res) => {
+  const params = new URLSearchParams({
+    client_id: process.env.DISCORD_CLIENT_ID,
+    redirect_uri: config.redirectUri,
+    response_type: "code",
+    scope: "identify guilds",
+  });
+  res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
+});
+
+app.get("/auth/callback", async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send("Geen code ontvangen.");
+  try {
+    const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
+      method: "POST",
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID,
+        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: config.redirectUri,
+      }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) throw new Error("Geen access token ontvangen.");
+
+    const [userRes, guildsRes] = await Promise.all([
+      fetch(`${DISCORD_API}/users/@me`, { headers: { Authorization: `Bearer ${tokenData.access_token}` } }),
+      fetch(`${DISCORD_API}/users/@me/guilds`, { headers: { Authorization: `Bearer ${tokenData.access_token}` } }),
+    ]);
+    const userData = await userRes.json();
+    const guildsData = await guildsRes.json();
+
+    // Toegang verlenen als de gebruiker ManageGuild heeft op een server waar de bot ook in zit
+    const botGuildIds = new Set(client.guilds.cache.keys());
+    const isAdmin = guildsData.some(
+      g => botGuildIds.has(g.id) && (BigInt(g.permissions) & 0x20n) !== 0n
+    );
+    if (!isAdmin) return res.redirect(`${config.frontendUrl}?error=geen_toegang`);
+
+    req.session.user = { id: userData.id, username: userData.username, avatar: userData.avatar };
+    res.redirect(config.frontendUrl);
+  } catch (err) {
+    console.error("OAuth fout:", err);
+    res.status(500).send("Authenticatie mislukt.");
+  }
+});
+
+app.get("/auth/me", (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: "Niet ingelogd" });
+  res.json(req.session.user);
+});
+
+app.post("/auth/logout", (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+// ── Vragen API ──
+
+app.get("/api/vragen", requireAuth, (req, res) => {
+  res.json({ waarheid: waarheidVragen, doen: doenOpdrachten });
+});
+
+app.post("/api/vragen", requireAuth, (req, res) => {
+  const { type, tekst } = req.body;
+  if (!["waarheid", "doen"].includes(type) || !tekst?.trim()) {
+    return res.status(400).json({ error: "Ongeldige invoer." });
+  }
+  const trimmed = tekst.trim();
+  if (type === "waarheid") waarheidVragen.push(trimmed);
+  else doenOpdrachten.push(trimmed);
+  slaVragenOp();
+  res.json({ ok: true });
+});
+
+app.put("/api/vragen/:type/:index", requireAuth, (req, res) => {
+  const { type, index } = req.params;
+  const { tekst } = req.body;
+  const lijst = type === "waarheid" ? waarheidVragen : type === "doen" ? doenOpdrachten : null;
+  const idx = parseInt(index);
+  if (!lijst || isNaN(idx) || idx < 0 || idx >= lijst.length || !tekst?.trim()) {
+    return res.status(400).json({ error: "Ongeldige invoer." });
+  }
+  lijst[idx] = tekst.trim();
+  slaVragenOp();
+  res.json({ ok: true });
+});
+
+app.delete("/api/vragen/:type/:index", requireAuth, (req, res) => {
+  const { type, index } = req.params;
+  const lijst = type === "waarheid" ? waarheidVragen : type === "doen" ? doenOpdrachten : null;
+  const idx = parseInt(index);
+  if (!lijst || isNaN(idx) || idx < 0 || idx >= lijst.length) {
+    return res.status(400).json({ error: "Ongeldige invoer." });
+  }
+  lijst.splice(idx, 1);
+  gebruikteWaarheid.clear();
+  gebruikteDoen.clear();
+  slaVragenOp();
+  res.json({ ok: true });
+});
+
+// ── Statistieken API ──
+
+app.get("/api/statistieken", requireAuth, (req, res) => {
+  res.json({
+    sessieStart,
+    aantalWaarheid,
+    aantalDoen,
+    rerollTeller: Object.fromEntries(rerollTeller),
+    waarheidTotaal: waarheidVragen.length,
+    doenTotaal: doenOpdrachten.length,
+  });
+});
+
+app.post("/api/reset", requireAuth, (req, res) => {
+  gebruikteWaarheid.clear();
+  gebruikteDoen.clear();
+  resetStatistieken();
+  res.json({ ok: true });
+});
+
+app.post("/api/reload", requireAuth, (req, res) => {
+  const succes = laadVragen();
+  res.json({ ok: succes });
+});
+
+// ── Instellingen API ──
+
+app.get("/api/instellingen", requireAuth, (req, res) => {
+  res.json(instellingen);
+});
+
+app.put("/api/instellingen", requireAuth, (req, res) => {
+  const { cooldownMs } = req.body;
+  if (typeof cooldownMs === "number" && cooldownMs >= 0 && cooldownMs <= 10000) {
+    instellingen.cooldownMs = cooldownMs;
+    slaInstellingenOp();
+  }
+  res.json(instellingen);
+});
+
+// ── Configuratie API ──
+
+app.get("/api/config", requireAuth, (req, res) => {
+  res.json(config);
+});
+
+app.put("/api/config", requireAuth, (req, res) => {
+  const { redirectUri, frontendUrl } = req.body;
+  if (redirectUri && typeof redirectUri === "string") config.redirectUri = redirectUri.trim();
+  if (frontendUrl && typeof frontendUrl === "string") config.frontendUrl = frontendUrl.trim();
+  slaConfigOp();
+  res.json(config);
+});
+
+// ── Statische bestanden (productie) ──
+
+const adminDist = join(__dirname, "admin", "dist");
+if (existsSync(adminDist)) {
+  app.use(express.static(adminDist));
+  app.get("*", (req, res) => res.sendFile(join(adminDist, "index.html")));
+}
+
+app.listen(ADMIN_PORT, () => {
+  console.log(`✅ Admin panel API draait op http://localhost:${ADMIN_PORT}`);
+});
+
 // ─── Start ─────────────────────────────────────────────────────────────────────
- 
+
 client.login(process.env.DISCORD_TOKEN);

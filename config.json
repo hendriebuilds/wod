@@ -1,0 +1,4 @@
+{
+  "redirectUri": "http://localhost:3001/auth/callback",
+  "frontendUrl": "http://localhost:3001"
+}
