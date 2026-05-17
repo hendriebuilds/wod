@@ -38,8 +38,8 @@ function laadVragen() {
     if (!Array.isArray(data.waarheid) || !Array.isArray(data.doen)) {
       throw new Error('vragen.json moet een "waarheid" en "doen" array bevatten.');
     }
-    waarheidVragen = data.waarheid;
-    doenOpdrachten = data.doen;
+    waarheidVragen = data.waarheid.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen' } : v);
+    doenOpdrachten = data.doen.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen' } : v);
     gebruikteWaarheid.clear();
     gebruikteDoen.clear();
     console.log(`✅ Vragen geladen: ${waarheidVragen.length} waarheid, ${doenOpdrachten.length} doen.`);
@@ -64,7 +64,7 @@ laadVragen();
 
 // ─── Instellingen ──────────────────────────────────────────────────────────────
 
-const instellingen = { cooldownMs: 1500 };
+const instellingen = { cooldownMs: 1500, dmModus: false };
 
 function laadInstellingen() {
   try {
@@ -171,7 +171,7 @@ function haalVraagUitEmbed(description, lijst, gebruikte) {
   const markerIdx = description.indexOf('\n\n> ');
   if (markerIdx === -1) return;
   const oudeVraag = description.slice(markerIdx + 4);
-  const oudeIndex = lijst.indexOf(oudeVraag);
+  const oudeIndex = lijst.findIndex(v => v.tekst === oudeVraag);
   if (oudeIndex !== -1) gebruikte.delete(oudeIndex);
 }
 
@@ -435,7 +435,7 @@ function buildLijstEmbeds(type) {
   let startNummer = 1;
 
   for (let i = 0; i < lijst.length; i++) {
-    const regel = `**${i + 1}.** ${lijst[i]}\n`;
+    const regel = `**${i + 1}.** ${lijst[i].tekst}\n`;
     if (huidigeTekst.length + regel.length > 3800) {
       embeds.push(
         new EmbedBuilder()
@@ -491,11 +491,11 @@ client.on("interactionCreate", async (interaction) => {
         const vraag = waarheidVragen[nummer - 1];
         gebruikteWaarheid.add(nummer - 1);
         aantalWaarheid++;
-        await interaction.reply({ embeds: [buildWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+        await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
       } else {
         const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
         aantalWaarheid++;
-        await interaction.reply({ embeds: [buildWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+        await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
       }
       return;
     }
@@ -510,11 +510,11 @@ client.on("interactionCreate", async (interaction) => {
         const opdracht = doenOpdrachten[nummer - 1];
         gebruikteDoen.add(nummer - 1);
         aantalDoen++;
-        await interaction.reply({ embeds: [buildDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+        await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
       } else {
         const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
         aantalDoen++;
-        await interaction.reply({ embeds: [buildDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+        await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
       }
       return;
     }
@@ -651,9 +651,9 @@ client.on("interactionCreate", async (interaction) => {
       const tekst = interaction.options.getString("tekst").trim();
 
       if (type === "waarheid") {
-        waarheidVragen.push(tekst);
+        waarheidVragen.push({ tekst, categorie: 'algemeen' });
       } else {
-        doenOpdrachten.push(tekst);
+        doenOpdrachten.push({ tekst, categorie: 'algemeen' });
       }
 
       const succes = slaVragenOp();
@@ -691,7 +691,7 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const tekst = lijst[nummer - 1];
+      const tekst = lijst[nummer - 1].tekst;
 
       await interaction.reply({
         embeds: [
@@ -732,7 +732,16 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       aantalWaarheid++;
-      await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user)] });
+          await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+      }
       return;
     }
 
@@ -740,7 +749,16 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       aantalDoen++;
-      await interaction.followUp({ embeds: [buildDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user)] });
+          await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+      }
       return;
     }
 
@@ -749,11 +767,29 @@ client.on("interactionCreate", async (interaction) => {
       if (Math.random() < 0.5) {
         const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
         aantalWaarheid++;
-        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+        if (instellingen.dmModus) {
+          try {
+            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user)] });
+            await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
+          } catch {
+            await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+          }
+        } else {
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+        }
       } else {
         const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
         aantalDoen++;
-        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+        if (instellingen.dmModus) {
+          try {
+            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user)] });
+            await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
+          } catch {
+            await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+          }
+        } else {
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+        }
       }
       return;
     }
@@ -764,7 +800,16 @@ client.on("interactionCreate", async (interaction) => {
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag, user, true)], components: [buildActieButtons("waarheid")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, true)] });
+          await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, true)], components: [buildActieButtons("waarheid")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, true)], components: [buildActieButtons("waarheid")] });
+      }
       return;
     }
 
@@ -774,7 +819,16 @@ client.on("interactionCreate", async (interaction) => {
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      await interaction.followUp({ embeds: [buildDoenEmbed(opdracht, user, true)], components: [buildActieButtons("doen")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, true)] });
+          await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, true)], components: [buildActieButtons("doen")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, true)], components: [buildActieButtons("doen")] });
+      }
       return;
     }
 
@@ -783,7 +837,16 @@ client.on("interactionCreate", async (interaction) => {
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag, user)], components: [buildActieButtons("waarheid")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user)] });
+          await interaction.followUp({ content: `📩 Strafvraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user)], components: [buildActieButtons("waarheid")] });
+      }
       return;
     }
 
@@ -792,7 +855,16 @@ client.on("interactionCreate", async (interaction) => {
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht, user)], components: [buildActieButtons("doen")] });
+      if (instellingen.dmModus) {
+        try {
+          await interaction.user.send({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)] });
+          await interaction.followUp({ content: `📩 Strafopdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
+        } catch {
+          await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+        }
+      } else {
+        await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+      }
       return;
     }
 
@@ -834,7 +906,7 @@ client.on("interactionCreate", async (interaction) => {
             .setTitle(succes ? "🗑️ Verwijderd" : "❌ Opslaan mislukt")
             .setDescription(
               succes
-                ? `${label.charAt(0).toUpperCase() + label.slice(1)} #${nummer} verwijderd:\n\n> ${verwijderd}\n\n*(De nummers zijn opnieuw ingedeeld)*`
+                ? `${label.charAt(0).toUpperCase() + label.slice(1)} #${nummer} verwijderd:\n\n> ${verwijderd.tekst}\n\n*(De nummers zijn opnieuw ingedeeld)*`
                 : "De vraag is verwijderd maar kon niet worden opgeslagen naar `vragen.json`."
             )
             .setTimestamp(),
@@ -943,26 +1015,27 @@ app.get("/api/vragen", requireAuth, (req, res) => {
 });
 
 app.post("/api/vragen", requireAuth, (req, res) => {
-  const { type, tekst } = req.body;
+  const { type, tekst, categorie } = req.body;
   if (!["waarheid", "doen"].includes(type) || !tekst?.trim()) {
     return res.status(400).json({ error: "Ongeldige invoer." });
   }
   const trimmed = tekst.trim();
-  if (type === "waarheid") waarheidVragen.push(trimmed);
-  else doenOpdrachten.push(trimmed);
+  const cat = categorie?.trim() || 'algemeen';
+  if (type === "waarheid") waarheidVragen.push({ tekst: trimmed, categorie: cat });
+  else doenOpdrachten.push({ tekst: trimmed, categorie: cat });
   slaVragenOp();
   res.json({ ok: true });
 });
 
 app.put("/api/vragen/:type/:index", requireAuth, (req, res) => {
   const { type, index } = req.params;
-  const { tekst } = req.body;
+  const { tekst, categorie } = req.body;
   const lijst = type === "waarheid" ? waarheidVragen : type === "doen" ? doenOpdrachten : null;
   const idx = parseInt(index);
   if (!lijst || isNaN(idx) || idx < 0 || idx >= lijst.length || !tekst?.trim()) {
     return res.status(400).json({ error: "Ongeldige invoer." });
   }
-  lijst[idx] = tekst.trim();
+  lijst[idx] = { tekst: tekst.trim(), categorie: categorie?.trim() || lijst[idx].categorie || 'algemeen' };
   slaVragenOp();
   res.json({ ok: true });
 });
@@ -979,6 +1052,70 @@ app.delete("/api/vragen/:type/:index", requireAuth, (req, res) => {
   gebruikteDoen.clear();
   slaVragenOp();
   res.json({ ok: true });
+});
+
+// ── Vragen export / import ──
+
+function escapeCSV(val) {
+  return `"${String(val).replace(/"/g, '""')}"`;
+}
+
+function parseCSVRow(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(current); current = '';
+    } else {
+      current += ch;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+app.get("/api/vragen/export", requireAuth, (req, res) => {
+  const rows = [['type', 'tekst', 'categorie']];
+  waarheidVragen.forEach(v => rows.push(['waarheid', v.tekst, v.categorie]));
+  doenOpdrachten.forEach(v => rows.push(['doen', v.tekst, v.categorie]));
+  const csv = rows.map(r => r.map(escapeCSV).join(',')).join('\r\n');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="vragen.csv"');
+  res.send(csv);
+});
+
+app.post("/api/vragen/import", requireAuth, express.text({ type: '*/*' }), (req, res) => {
+  try {
+    const lines = req.body.trim().split(/\r?\n/);
+    if (lines.length < 2) return res.status(400).json({ error: 'Bestand bevat geen data.' });
+    const header = parseCSVRow(lines[0]).map(h => h.toLowerCase());
+    const typeIdx = header.indexOf('type');
+    const tekstIdx = header.indexOf('tekst');
+    const catIdx = header.indexOf('categorie');
+    if (typeIdx === -1 || tekstIdx === -1) {
+      return res.status(400).json({ error: 'Kolommen "type" en "tekst" zijn verplicht.' });
+    }
+    let toegevoegd = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const row = parseCSVRow(lines[i]);
+      const type = row[typeIdx]?.toLowerCase().trim();
+      const tekst = row[tekstIdx]?.trim();
+      const categorie = catIdx !== -1 ? (row[catIdx]?.trim() || 'algemeen') : 'algemeen';
+      if (!tekst || !['waarheid', 'doen'].includes(type)) continue;
+      if (type === 'waarheid') waarheidVragen.push({ tekst, categorie });
+      else doenOpdrachten.push({ tekst, categorie });
+      toegevoegd++;
+    }
+    slaVragenOp();
+    res.json({ ok: true, toegevoegd });
+  } catch {
+    res.status(400).json({ error: 'Fout bij verwerken van bestand.' });
+  }
 });
 
 // ── Statistieken API ──
@@ -1013,11 +1150,14 @@ app.get("/api/instellingen", requireAuth, (req, res) => {
 });
 
 app.put("/api/instellingen", requireAuth, (req, res) => {
-  const { cooldownMs } = req.body;
+  const { cooldownMs, dmModus } = req.body;
   if (typeof cooldownMs === "number" && cooldownMs >= 0 && cooldownMs <= 10000) {
     instellingen.cooldownMs = cooldownMs;
-    slaInstellingenOp();
   }
+  if (typeof dmModus === "boolean") {
+    instellingen.dmModus = dmModus;
+  }
+  slaInstellingenOp();
   res.json(instellingen);
 });
 

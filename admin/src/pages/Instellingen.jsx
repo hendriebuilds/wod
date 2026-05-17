@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api.js';
 
 export default function Instellingen() {
-  const [values, setValues] = useState({ cooldownMs: 1500 });
+  const [values, setValues] = useState({ cooldownMs: 1500, dmModus: false });
   const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
@@ -49,6 +49,24 @@ export default function Instellingen() {
               Wachttijd tussen knopklikken per gebruiker. Huidig: {(values.cooldownMs / 1000).toFixed(1)}s
             </p>
           </div>
+
+          <div className="form-group">
+            <label className="form-label">DM-modus</label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={values.dmModus ?? false}
+                onChange={e => setValues(v => ({ ...v, dmModus: e.target.checked }))}
+              />
+              <span className="toggle-track">
+                <span className="toggle-thumb" />
+              </span>
+            </label>
+            <p className="form-hint">
+              Stuur vragen privé via DM in plaats van in het kanaal. De actieknoppen blijven zichtbaar in het kanaal.
+            </p>
+          </div>
+
           <button type="submit" className="btn btn-primary">💾 Opslaan</button>
         </form>
       </div>
