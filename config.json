@@ -1,4 +1,4 @@
 {
-  "redirectUri": "http://localhost:3001/auth/callback",
-  "frontendUrl": "http://localhost:3001"
+  "redirectUri": "https://wod.theselfhost.nl/auth/callback",
+  "frontendUrl": "https://wod.theselfhost.nl"
 }
