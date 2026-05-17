@@ -11,7 +11,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import * as dotenv from "dotenv";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import express from "express";
@@ -23,12 +23,19 @@ dotenv.config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PAD = join(__dirname, "config.json");
-const VRAGEN_PAD = join(__dirname, "vragen.json");      // migration only
-const INSTELLINGEN_PAD = join(__dirname, "settings.json"); // migration only
+// migration only — check both old /app location and new /app/data location
+const VRAGEN_PAD = existsSync(join(__dirname, "vragen.json"))
+  ? join(__dirname, "vragen.json")
+  : join(__dirname, "data", "vragen.json");
+const INSTELLINGEN_PAD = existsSync(join(__dirname, "settings.json"))
+  ? join(__dirname, "settings.json")
+  : join(__dirname, "data", "settings.json");
 
 // ─── Database ──────────────────────────────────────────────────────────────────
 
-const db = new Database(join(__dirname, "bot.db"));
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, "data");
+mkdirSync(DATA_DIR, { recursive: true });
+const db = new Database(join(DATA_DIR, "bot.db"));
 db.pragma("journal_mode = WAL");
 db.exec(`
   CREATE TABLE IF NOT EXISTS vragen (
