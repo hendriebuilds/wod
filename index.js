@@ -38,8 +38,8 @@ function laadVragen() {
     if (!Array.isArray(data.waarheid) || !Array.isArray(data.doen)) {
       throw new Error('vragen.json moet een "waarheid" en "doen" array bevatten.');
     }
-    waarheidVragen = data.waarheid.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen' } : v);
-    doenOpdrachten = data.doen.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen' } : v);
+    waarheidVragen = data.waarheid.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen', dmModus: false } : { dmModus: false, ...v });
+    doenOpdrachten = data.doen.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen', dmModus: false } : { dmModus: false, ...v });
     gebruikteWaarheid.clear();
     gebruikteDoen.clear();
     console.log(`✅ Vragen geladen: ${waarheidVragen.length} waarheid, ${doenOpdrachten.length} doen.`);
@@ -732,7 +732,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       aantalWaarheid++;
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || vraag.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user)] });
           await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
@@ -749,7 +749,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       aantalDoen++;
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || opdracht.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user)] });
           await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
@@ -767,7 +767,7 @@ client.on("interactionCreate", async (interaction) => {
       if (Math.random() < 0.5) {
         const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
         aantalWaarheid++;
-        if (instellingen.dmModus) {
+        if (instellingen.dmModus || vraag.dmModus) {
           try {
             await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user)] });
             await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
@@ -780,7 +780,7 @@ client.on("interactionCreate", async (interaction) => {
       } else {
         const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
         aantalDoen++;
-        if (instellingen.dmModus) {
+        if (instellingen.dmModus || opdracht.dmModus) {
           try {
             await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user)] });
             await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
@@ -800,7 +800,7 @@ client.on("interactionCreate", async (interaction) => {
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || vraag.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, true)] });
           await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
@@ -819,7 +819,7 @@ client.on("interactionCreate", async (interaction) => {
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || opdracht.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, true)] });
           await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
@@ -837,7 +837,7 @@ client.on("interactionCreate", async (interaction) => {
       const vraag = getVraag(waarheidVragen, gebruikteWaarheid);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || vraag.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user)] });
           await interaction.followUp({ content: `📩 Strafvraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
@@ -855,7 +855,7 @@ client.on("interactionCreate", async (interaction) => {
       const opdracht = getVraag(doenOpdrachten, gebruikteDoen);
       await interaction.deferUpdate();
       await interaction.message.delete();
-      if (instellingen.dmModus) {
+      if (instellingen.dmModus || opdracht.dmModus) {
         try {
           await interaction.user.send({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)] });
           await interaction.followUp({ content: `📩 Strafopdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
@@ -1015,27 +1015,32 @@ app.get("/api/vragen", requireAuth, (req, res) => {
 });
 
 app.post("/api/vragen", requireAuth, (req, res) => {
-  const { type, tekst, categorie } = req.body;
+  const { type, tekst, categorie, dmModus } = req.body;
   if (!["waarheid", "doen"].includes(type) || !tekst?.trim()) {
     return res.status(400).json({ error: "Ongeldige invoer." });
   }
   const trimmed = tekst.trim();
   const cat = categorie?.trim() || 'algemeen';
-  if (type === "waarheid") waarheidVragen.push({ tekst: trimmed, categorie: cat });
-  else doenOpdrachten.push({ tekst: trimmed, categorie: cat });
+  const vDM = typeof dmModus === 'boolean' ? dmModus : false;
+  if (type === "waarheid") waarheidVragen.push({ tekst: trimmed, categorie: cat, dmModus: vDM });
+  else doenOpdrachten.push({ tekst: trimmed, categorie: cat, dmModus: vDM });
   slaVragenOp();
   res.json({ ok: true });
 });
 
 app.put("/api/vragen/:type/:index", requireAuth, (req, res) => {
   const { type, index } = req.params;
-  const { tekst, categorie } = req.body;
+  const { tekst, categorie, dmModus } = req.body;
   const lijst = type === "waarheid" ? waarheidVragen : type === "doen" ? doenOpdrachten : null;
   const idx = parseInt(index);
   if (!lijst || isNaN(idx) || idx < 0 || idx >= lijst.length || !tekst?.trim()) {
     return res.status(400).json({ error: "Ongeldige invoer." });
   }
-  lijst[idx] = { tekst: tekst.trim(), categorie: categorie?.trim() || lijst[idx].categorie || 'algemeen' };
+  lijst[idx] = {
+    tekst: tekst.trim(),
+    categorie: categorie?.trim() || lijst[idx].categorie || 'algemeen',
+    dmModus: typeof dmModus === 'boolean' ? dmModus : lijst[idx].dmModus ?? false,
+  };
   slaVragenOp();
   res.json({ ok: true });
 });
