@@ -29,9 +29,11 @@ export default function Vragen() {
   const [vragen, setVragen] = useState({ waarheid: [], doen: [] });
   const [nieuwTekst, setNieuwTekst] = useState('');
   const [nieuwCat, setNieuwCat] = useState('algemeen');
+  const [nieuwDM, setNieuwDM] = useState(false);
   const [editIdx, setEditIdx] = useState(null);
   const [editTekst, setEditTekst] = useState('');
   const [editCat, setEditCat] = useState('algemeen');
+  const [editDM, setEditDM] = useState(false);
   const [catFilter, setCatFilter] = useState('alle');
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,8 +60,9 @@ export default function Vragen() {
     e.preventDefault();
     if (!nieuwTekst.trim()) return;
     try {
-      await api.addVraag(tab, nieuwTekst.trim(), nieuwCat);
+      await api.addVraag(tab, nieuwTekst.trim(), nieuwCat, nieuwDM);
       setNieuwTekst('');
+      setNieuwDM(false);
       await laad();
       toon('Vraag toegevoegd!');
     } catch {
@@ -67,10 +70,20 @@ export default function Vragen() {
     }
   };
 
+  const toggleDM = async (originalIdx, huidig) => {
+    const item = huidigeVragen[originalIdx];
+    try {
+      await api.updateVraag(tab, originalIdx, item.tekst, item.categorie, !huidig);
+      await laad();
+    } catch {
+      toon('DM-modus wijzigen mislukt.', 'error');
+    }
+  };
+
   const opslaan = async (originalIdx) => {
     if (!editTekst.trim()) return;
     try {
-      await api.updateVraag(tab, originalIdx, editTekst.trim(), editCat);
+      await api.updateVraag(tab, originalIdx, editTekst.trim(), editCat, editDM);
       setEditIdx(null);
       await laad();
       toon('Vraag bijgewerkt!');
@@ -147,6 +160,12 @@ export default function Vragen() {
         >
           {CATEGORIEEN.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <button
+          type="button"
+          className={`btn btn-icon ${nieuwDM ? 'btn-primary' : 'btn-ghost'}`}
+          title={nieuwDM ? 'DM-modus aan' : 'DM-modus uit'}
+          onClick={() => setNieuwDM(v => !v)}
+        >📩</button>
         <button type="submit" className="btn btn-primary">Toevoegen</button>
       </form>
 
@@ -198,6 +217,12 @@ export default function Vragen() {
                   >
                     {CATEGORIEEN.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  <button
+                    type="button"
+                    className={`btn btn-icon ${editDM ? 'btn-primary' : 'btn-ghost'}`}
+                    title={editDM ? 'DM-modus aan' : 'DM-modus uit'}
+                    onClick={() => setEditDM(v => !v)}
+                  >📩</button>
                   <div className="question-actions">
                     <button className="btn btn-primary btn-icon" onClick={() => opslaan(item.originalIdx)}>✓</button>
                     <button className="btn btn-ghost btn-icon" onClick={() => setEditIdx(null)}>✕</button>
@@ -218,8 +243,13 @@ export default function Vragen() {
                   </span>
                   <div className="question-actions">
                     <button
+                      className={`btn btn-icon ${item.dmModus ? 'btn-primary' : 'btn-ghost'}`}
+                      title={item.dmModus ? 'DM-modus aan – klik om uit te zetten' : 'DM-modus uit – klik om aan te zetten'}
+                      onClick={() => toggleDM(item.originalIdx, item.dmModus)}
+                    >📩</button>
+                    <button
                       className="btn btn-ghost btn-icon"
-                      onClick={() => { setEditIdx(item.originalIdx); setEditTekst(item.tekst); setEditCat(item.categorie); }}
+                      onClick={() => { setEditIdx(item.originalIdx); setEditTekst(item.tekst); setEditCat(item.categorie); setEditDM(item.dmModus); }}
                     >✏️</button>
                     <button className="btn btn-danger btn-icon" onClick={() => verwijder(item.originalIdx)}>🗑️</button>
                   </div>
