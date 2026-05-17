@@ -30,7 +30,7 @@ export default function Vragen() {
   const [nieuwTekst, setNieuwTekst] = useState('');
   const [nieuwCat, setNieuwCat] = useState('algemeen');
   const [nieuwDM, setNieuwDM] = useState(false);
-  const [editIdx, setEditIdx] = useState(null);
+  const [editId, setEditId] = useState(null);
   const [editTekst, setEditTekst] = useState('');
   const [editCat, setEditCat] = useState('algemeen');
   const [editDM, setEditDM] = useState(false);
@@ -70,21 +70,20 @@ export default function Vragen() {
     }
   };
 
-  const toggleDM = async (originalIdx, huidig) => {
-    const item = huidigeVragen[originalIdx];
+  const toggleDM = async (item) => {
     try {
-      await api.updateVraag(tab, originalIdx, item.tekst, item.categorie, !huidig);
+      await api.updateVraag(item.id, item.tekst, item.categorie, !item.dmModus);
       await laad();
     } catch {
       toon('DM-modus wijzigen mislukt.', 'error');
     }
   };
 
-  const opslaan = async (originalIdx) => {
+  const opslaan = async (id) => {
     if (!editTekst.trim()) return;
     try {
-      await api.updateVraag(tab, originalIdx, editTekst.trim(), editCat, editDM);
-      setEditIdx(null);
+      await api.updateVraag(id, editTekst.trim(), editCat, editDM);
+      setEditId(null);
       await laad();
       toon('Vraag bijgewerkt!');
     } catch {
@@ -92,10 +91,10 @@ export default function Vragen() {
     }
   };
 
-  const verwijder = async (originalIdx) => {
+  const verwijder = async (id) => {
     if (!confirm('Weet je zeker dat je deze vraag wilt verwijderen?')) return;
     try {
-      await api.deleteVraag(tab, originalIdx);
+      await api.deleteVraag(id);
       await laad();
       toon('Vraag verwijderd.');
     } catch {
@@ -118,7 +117,7 @@ export default function Vragen() {
   };
 
   const huidigeVragen = vragen[tab];
-  const metIndex = huidigeVragen.map((v, i) => ({ ...v, originalIdx: i }));
+  const metIndex = huidigeVragen.map((v, i) => ({ ...v, displayNum: i + 1 }));
   const distinctCats = new Set(huidigeVragen.map(v => v.categorie));
   const gefilterd = catFilter === 'alle' ? metIndex : metIndex.filter(v => v.categorie === catFilter);
   const filterOpties = ['alle', ...distinctCats];
@@ -134,13 +133,13 @@ export default function Vragen() {
       <div className="tabs">
         <button
           className={`tab ${tab === 'waarheid' ? 'active' : ''}`}
-          onClick={() => { setTab('waarheid'); setEditIdx(null); setCatFilter('alle'); }}
+          onClick={() => { setTab('waarheid'); setEditId(null); setCatFilter('alle'); }}
         >
           🔵 Waarheid ({vragen.waarheid.length})
         </button>
         <button
           className={`tab ${tab === 'doen' ? 'active' : ''}`}
-          onClick={() => { setTab('doen'); setEditIdx(null); setCatFilter('alle'); }}
+          onClick={() => { setTab('doen'); setEditId(null); setCatFilter('alle'); }}
         >
           🔴 Doen ({vragen.doen.length})
         </button>
@@ -196,17 +195,17 @@ export default function Vragen() {
       ) : (
         <div className="question-list">
           {gefilterd.map((item) => (
-            <div key={item.originalIdx} className={`question-item ${editIdx === item.originalIdx ? 'editing' : ''}`}>
-              <span className="question-num">#{item.originalIdx + 1}</span>
-              {editIdx === item.originalIdx ? (
+            <div key={item.id} className={`question-item ${editId === item.id ? 'editing' : ''}`}>
+              <span className="question-num">#{item.displayNum}</span>
+              {editId === item.id ? (
                 <>
                   <input
                     className="form-input"
                     value={editTekst}
                     onChange={e => setEditTekst(e.target.value)}
                     onKeyDown={e => {
-                      if (e.key === 'Enter') opslaan(item.originalIdx);
-                      if (e.key === 'Escape') setEditIdx(null);
+                      if (e.key === 'Enter') opslaan(item.id);
+                      if (e.key === 'Escape') setEditId(null);
                     }}
                     autoFocus
                   />
@@ -224,8 +223,8 @@ export default function Vragen() {
                     onClick={() => setEditDM(v => !v)}
                   >📩</button>
                   <div className="question-actions">
-                    <button className="btn btn-primary btn-icon" onClick={() => opslaan(item.originalIdx)}>✓</button>
-                    <button className="btn btn-ghost btn-icon" onClick={() => setEditIdx(null)}>✕</button>
+                    <button className="btn btn-primary btn-icon" onClick={() => opslaan(item.id)}>✓</button>
+                    <button className="btn btn-ghost btn-icon" onClick={() => setEditId(null)}>✕</button>
                   </div>
                 </>
               ) : (
@@ -245,13 +244,13 @@ export default function Vragen() {
                     <button
                       className={`btn btn-icon ${item.dmModus ? 'btn-primary' : 'btn-ghost'}`}
                       title={item.dmModus ? 'DM-modus aan – klik om uit te zetten' : 'DM-modus uit – klik om aan te zetten'}
-                      onClick={() => toggleDM(item.originalIdx, item.dmModus)}
+                      onClick={() => toggleDM(item)}
                     >📩</button>
                     <button
                       className="btn btn-ghost btn-icon"
-                      onClick={() => { setEditIdx(item.originalIdx); setEditTekst(item.tekst); setEditCat(item.categorie); setEditDM(item.dmModus); }}
+                      onClick={() => { setEditId(item.id); setEditTekst(item.tekst); setEditCat(item.categorie); setEditDM(item.dmModus); }}
                     >✏️</button>
-                    <button className="btn btn-danger btn-icon" onClick={() => verwijder(item.originalIdx)}>🗑️</button>
+                    <button className="btn btn-danger btn-icon" onClick={() => verwijder(item.id)}>🗑️</button>
                   </div>
                 </>
               )}

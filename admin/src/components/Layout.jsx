@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../api.js';
 import Vragen from '../pages/Vragen.jsx';
 import Statistieken from '../pages/Statistieken.jsx';
@@ -14,6 +14,26 @@ const PAGES = {
 
 export default function Layout({ user, onLogout }) {
   const [page, setPage] = useState('vragen');
+  const [guilds, setGuilds] = useState([]);
+  const [activeGuildId, setActiveGuildId] = useState(null);
+  const [pageKey, setPageKey] = useState(0);
+
+  useEffect(() => {
+    api.getGuilds().then(({ guilds, activeGuildId }) => {
+      setGuilds(guilds);
+      setActiveGuildId(activeGuildId);
+    }).catch(() => {});
+  }, []);
+
+  const handleGuildChange = async (guildId) => {
+    try {
+      await api.setActiveGuild(guildId);
+      setActiveGuildId(guildId);
+      setPageKey(k => k + 1);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleLogout = async () => {
     await api.logout().catch(() => {});
@@ -30,6 +50,26 @@ export default function Layout({ user, onLogout }) {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-title">🎮 WoD Admin</div>
+
+        {guilds.length > 1 && (
+          <div className="guild-selector">
+            <select
+              value={activeGuildId || ''}
+              onChange={e => handleGuildChange(e.target.value)}
+              className="form-select"
+              style={{ width: '100%', marginBottom: '12px' }}
+            >
+              {guilds.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {guilds.length === 1 && (
+          <div className="guild-name">{guilds[0].name}</div>
+        )}
+
         <nav>
           {Object.entries(PAGES).map(([key, { label }]) => (
             <button
@@ -50,7 +90,7 @@ export default function Layout({ user, onLogout }) {
         </div>
       </aside>
       <main className="main">
-        <PageComponent />
+        <PageComponent key={pageKey} />
       </main>
     </div>
   );
