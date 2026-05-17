@@ -577,13 +577,12 @@ client.once("ready", async () => {
     console.error("❌ Fout bij registreren van globale commands:", err.message);
   }
 
-  // Guild-specifieke registratie voor directe beschikbaarheid
+  // Verwijder guild-specifieke commands (voorkomt duplicaten)
   for (const [guildId] of client.guilds.cache) {
     try {
-      await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
-      console.log(`✅ Guild commands geregistreerd voor ${client.guilds.cache.get(guildId)?.name} (${guildId})`);
-    } catch (err) {
-      console.error(`❌ Guild command registratie mislukt voor ${guildId}:`, err.message);
+      await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: [] });
+    } catch {
+      // stilletjes negeren
     }
   }
 
