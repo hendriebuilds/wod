@@ -38,8 +38,8 @@ function laadVragen() {
     if (!Array.isArray(data.waarheid) || !Array.isArray(data.doen)) {
       throw new Error('vragen.json moet een "waarheid" en "doen" array bevatten.');
     }
-    waarheidVragen = data.waarheid.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen', dmModus: false } : { dmModus: false, ...v });
-    doenOpdrachten = data.doen.map(v => typeof v === 'string' ? { tekst: v, categorie: 'algemeen', dmModus: false } : { dmModus: false, ...v });
+    waarheidVragen = data.waarheid.map(v => typeof v === 'string' ? { tekst: v, categorie: '18+', dmModus: false } : { dmModus: false, ...v });
+    doenOpdrachten = data.doen.map(v => typeof v === 'string' ? { tekst: v, categorie: '18+', dmModus: false } : { dmModus: false, ...v });
     gebruikteWaarheid.clear();
     gebruikteDoen.clear();
     console.log(`✅ Vragen geladen: ${waarheidVragen.length} waarheid, ${doenOpdrachten.length} doen.`);
