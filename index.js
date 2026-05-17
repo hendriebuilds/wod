@@ -52,6 +52,12 @@ db.exec(`
     dm_modus INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_vragen_guild_type ON vragen(guild_id, type);
+  CREATE TABLE IF NOT EXISTS nooit_stellingen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    tekst TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_nooit_guild ON nooit_stellingen(guild_id);
 `);
 
 const stmts = {
@@ -62,8 +68,20 @@ const stmts = {
   deleteVraagById:    db.prepare("DELETE FROM vragen WHERE id = ? AND guild_id = ?"),
   getInstellingen:    db.prepare("SELECT * FROM instellingen WHERE guild_id = ?"),
   upsertInstellingen: db.prepare("INSERT INTO instellingen (guild_id, cooldown_ms, dm_modus) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET cooldown_ms = excluded.cooldown_ms, dm_modus = excluded.dm_modus"),
-  ensureInstellingen: db.prepare("INSERT OR IGNORE INTO instellingen (guild_id) VALUES (?)"),
+  ensureInstellingen:  db.prepare("INSERT OR IGNORE INTO instellingen (guild_id) VALUES (?)"),
+  getNooitStelling:    db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY RANDOM() LIMIT 1"),
+  getAllNooit:         db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY id"),
+  countNooit:         db.prepare("SELECT COUNT(*) AS cnt FROM nooit_stellingen WHERE guild_id = ?"),
+  insertNooit:        db.prepare("INSERT INTO nooit_stellingen (guild_id, tekst) VALUES (?, ?)"),
+  updateNooit:        db.prepare("UPDATE nooit_stellingen SET tekst = ? WHERE id = ? AND guild_id = ?"),
+  deleteNooit:        db.prepare("DELETE FROM nooit_stellingen WHERE id = ? AND guild_id = ?"),
 };
+
+function getRandomNooit(guildId) {
+  const row = stmts.getNooitStelling.get(guildId);
+  if (row) return row.tekst;
+  return NOOIT_STELLINGEN[Math.floor(Math.random() * NOOIT_STELLINGEN.length)];
+}
 
 function dbGetInstellingen(guildId) {
   stmts.ensureInstellingen.run(guildId);
@@ -563,6 +581,14 @@ function migrateFromJSON() {
       console.error("❌ Migratie settings.json mislukt:", err.message);
     }
   }
+
+  // Seed standaard nooit-stellingen voor guilds zonder stellingen
+  const seedNooit = db.transaction((guildId) => {
+    if (stmts.countNooit.get(guildId).cnt === 0) {
+      NOOIT_STELLINGEN.forEach(tekst => stmts.insertNooit.run(guildId, tekst));
+    }
+  });
+  guildIds.forEach(seedNooit);
 }
 
 client.once("ready", async () => {
@@ -914,7 +940,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "nooit") {
       const invoer = interaction.options.getString("stelling");
-      const stelling = invoer?.trim() || NOOIT_STELLINGEN[Math.floor(Math.random() * NOOIT_STELLINGEN.length)];
+      const stelling = invoer?.trim() || getRandomNooit(guildId);
       const sessionId = interaction.id;
       const timeout = setTimeout(() => nooitStemmen.delete(sessionId), 2 * 60 * 60 * 1000);
       nooitStemmen.set(sessionId, { stelling, wel: new Map(), nooit: new Map(), timeout });
@@ -1660,6 +1686,37 @@ app.put("/api/instellingen", requireAuth, requireGuild, (req, res) => {
   const newDM = typeof dmModus === "boolean" ? dmModus : inst.dmModus;
   stmts.upsertInstellingen.run(guildId, newCooldown, newDM ? 1 : 0);
   res.json({ cooldownMs: newCooldown, dmModus: newDM });
+});
+
+// ── Nooit-stellingen API ──
+
+app.get("/api/nooit", requireAuth, requireGuild, (req, res) => {
+  const stellingen = stmts.getAllNooit.all(req.session.activeGuildId);
+  res.json(stellingen);
+});
+
+app.post("/api/nooit", requireAuth, requireGuild, (req, res) => {
+  const { tekst } = req.body;
+  if (!tekst?.trim()) return res.status(400).json({ error: "Tekst is verplicht." });
+  stmts.insertNooit.run(req.session.activeGuildId, tekst.trim());
+  res.json({ ok: true });
+});
+
+app.put("/api/nooit/:id", requireAuth, requireGuild, (req, res) => {
+  const id = parseInt(req.params.id);
+  const { tekst } = req.body;
+  if (isNaN(id) || !tekst?.trim()) return res.status(400).json({ error: "Ongeldige invoer." });
+  const result = stmts.updateNooit.run(tekst.trim(), id, req.session.activeGuildId);
+  if (result.changes === 0) return res.status(404).json({ error: "Stelling niet gevonden." });
+  res.json({ ok: true });
+});
+
+app.delete("/api/nooit/:id", requireAuth, requireGuild, (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Ongeldige invoer." });
+  const result = stmts.deleteNooit.run(id, req.session.activeGuildId);
+  if (result.changes === 0) return res.status(404).json({ error: "Stelling niet gevonden." });
+  res.json({ ok: true });
 });
 
 // ── Configuratie API ──

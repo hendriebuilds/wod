@@ -37,4 +37,8 @@ export const api = {
   updateInstellingen: (data) => req('PUT', '/api/instellingen', data),
   getConfig: () => req('GET', '/api/config'),
   updateConfig: (data) => req('PUT', '/api/config', data),
+  getNooit: () => req('GET', '/api/nooit'),
+  addNooit: (tekst) => req('POST', '/api/nooit', { tekst }),
+  updateNooit: (id, tekst) => req('PUT', `/api/nooit/${id}`, { tekst }),
+  deleteNooit: (id) => req('DELETE', `/api/nooit/${id}`),
 };
