@@ -568,12 +568,25 @@ function migrateFromJSON() {
 client.once("ready", async () => {
   console.log(`✅ Ingelogd als ${client.user.tag}`);
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
+
+  // Globale registratie
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log("✅ Slash commands geregistreerd!");
+    console.log("✅ Globale slash commands geregistreerd!");
   } catch (err) {
-    console.error("❌ Fout bij registreren van commands:", err);
+    console.error("❌ Fout bij registreren van globale commands:", err.message);
   }
+
+  // Guild-specifieke registratie voor directe beschikbaarheid
+  for (const [guildId] of client.guilds.cache) {
+    try {
+      await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
+      console.log(`✅ Guild commands geregistreerd voor ${client.guilds.cache.get(guildId)?.name} (${guildId})`);
+    } catch (err) {
+      console.error(`❌ Guild command registratie mislukt voor ${guildId}:`, err.message);
+    }
+  }
+
   migrateFromJSON();
 });
 
