@@ -131,6 +131,102 @@ function resetStatistieken() {
   rerollTeller.clear();
 }
 
+// ─── Liefdestaal test ─────────────────────────────────────────────────────────
+
+const LIEFDESTAAL_VRAGEN = [
+  { vraag: 'Na een zware dag voel ik me het best als iemand...',
+    a: { tekst: 'Mij opbeurt met lieve, oprechte woorden', taal: 'W' },
+    b: { tekst: 'Alle aandacht en tijd aan mij geeft', taal: 'T' } },
+  { vraag: 'Ik voel me het meest begrepen als iemand...',
+    a: { tekst: 'Mij aanmoedigt of een compliment geeft', taal: 'W' },
+    b: { tekst: 'Mij spontaan aanraakt, knuffelt of mijn hand pakt', taal: 'A' } },
+  { vraag: 'Als iemand echt om mij geeft, toont dat door...',
+    a: { tekst: 'Mij te vertellen wat ik voor hen beteken', taal: 'W' },
+    b: { tekst: 'Dingen voor mij te doen zonder dat ik erom vraag', taal: 'D' } },
+  { vraag: 'Mijn hart gaat sneller van...',
+    a: { tekst: '"Ik ben zo trots op jou" of "Je ziet er geweldig uit"', taal: 'W' },
+    b: { tekst: 'Een onverwacht cadeautje, hoe klein ook', taal: 'C' } },
+  { vraag: 'De perfecte avond is voor mij...',
+    a: { tekst: 'Samen op de bank, telefoon weg, gewoon aanwezig zijn', taal: 'T' },
+    b: { tekst: 'Veel knuffelen en fysiek dichtbij zijn', taal: 'A' } },
+  { vraag: 'Ik merk dat iemand van mij houdt als...',
+    a: { tekst: 'Ze tijd vrijmaken, ook als het druk is', taal: 'T' },
+    b: { tekst: 'Ze dingen voor mij doen zonder dat ik erom vraag', taal: 'D' } },
+  { vraag: 'Ik voel me het meest verbonden als iemand...',
+    a: { tekst: 'Echt aanwezig is als ik dat nodig heb', taal: 'T' },
+    b: { tekst: 'Aan mij denkt met een attent kadootje', taal: 'C' } },
+  { vraag: 'Bij stress heb ik meer behoefte aan...',
+    a: { tekst: 'Een knuffel of geruststellende aanraking', taal: 'A' },
+    b: { tekst: 'Dat iemand een taak of probleem van mij overneemt', taal: 'D' } },
+  { vraag: 'Als verrassing kies ik liever...',
+    a: { tekst: 'Dat iemand mij vastpakt en zegt dat alles goed komt', taal: 'A' },
+    b: { tekst: 'Een doordacht cadeau dat laat zien dat ze goed opletten', taal: 'C' } },
+  { vraag: 'Ik voel me het meest verwend als...',
+    a: { tekst: 'Iemand voor mij kookt of iets voor mij regelt', taal: 'D' },
+    b: { tekst: 'Iemand iets meeneemt waarvan ik had gezegd dat ik het mooi vond', taal: 'C' } },
+];
+
+const LIEFDESTALEN = {
+  W: { naam: 'Woorden van bevestiging', emoji: '💬', kleur: 0x5865f2, beschrijving: 'Jij bloeit op van complimenten, aanmoediging en lieve berichtjes.' },
+  T: { naam: 'Kwaliteitsvolle tijd', emoji: '⏰', kleur: 0x57f287, beschrijving: 'Voor jou is echte, onverdeelde aandacht het mooiste cadeau.' },
+  A: { naam: 'Lichamelijke aanraking', emoji: '🤗', kleur: 0xeb459e, beschrijving: 'Een knuffel zegt voor jou meer dan duizend woorden.' },
+  D: { naam: 'Daden van dienst', emoji: '🛠️', kleur: 0xfee75c, beschrijving: 'Jij voelt liefde in daden – als iemand iets doet zonder dat jij erom vraagt.' },
+  C: { naam: 'Cadeaus ontvangen', emoji: '🎁', kleur: 0xed4245, beschrijving: 'Jij waardeert de moeite en het nadenken achter een attent gebaar.' },
+};
+
+const liefdestaalSessies = new Map(); // userId -> { channelId, antwoorden, vraagIndex, timeout }
+
+function buildLiefdestaalVraagEmbed(index) {
+  const v = LIEFDESTAAL_VRAGEN[index];
+  const voortgang = '█'.repeat(index) + '░'.repeat(LIEFDESTAAL_VRAGEN.length - index);
+  return new EmbedBuilder()
+    .setColor(0xfee75c)
+    .setTitle(`💕 Liefdestaal test — Vraag ${index + 1}/${LIEFDESTAAL_VRAGEN.length}`)
+    .setDescription(`**${v.vraag}**\n\n🅰️ ${v.a.tekst}\n\n🅱️ ${v.b.tekst}`)
+    .setFooter({ text: `Voortgang: ${voortgang}` });
+}
+
+function buildLiefdestaalButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('lt_A').setLabel('🅰️ A').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('lt_B').setLabel('🅱️ B').setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function buildLiefdestaalResultaatEmbed(user, antwoorden) {
+  const scores = { W: 0, T: 0, A: 0, D: 0, C: 0 };
+  antwoorden.forEach((keuze, i) => {
+    const v = LIEFDESTAAL_VRAGEN[i];
+    scores[keuze === 'A' ? v.a.taal : v.b.taal]++;
+  });
+
+  const gesorteerd = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const max = gesorteerd[0][1];
+  const winnaars = gesorteerd.filter(([, s]) => s === max);
+  const primair = LIEFDESTALEN[winnaars[0][0]];
+
+  const scoresTekst = gesorteerd
+    .map(([code, score]) => {
+      const t = LIEFDESTALEN[code];
+      const bar = '█'.repeat(score) + '░'.repeat(LIEFDESTAAL_VRAGEN.length - score);
+      return `${t.emoji} **${t.naam}** \`${bar}\` ${score}`;
+    })
+    .join('\n');
+
+  const titel = winnaars.length > 1
+    ? winnaars.map(([c]) => `${LIEFDESTALEN[c].emoji} ${LIEFDESTALEN[c].naam}`).join(' & ')
+    : `${primair.emoji} ${primair.naam}`;
+
+  const naam = user.displayName ?? user.username;
+
+  return new EmbedBuilder()
+    .setColor(primair.kleur)
+    .setTitle(`💕 Liefdestaal van ${naam}`)
+    .setDescription(`**${titel}**\n\n${primair.beschrijving}\n\n${scoresTekst}`)
+    .setFooter({ text: 'Gebaseerd op The 5 Love Languages van Gary Chapman' })
+    .setTimestamp();
+}
+
 // ─── Beurtrotatie ──────────────────────────────────────────────────────────────
 
 const beurtenLijst = []; // [{ id, naam }]
@@ -236,6 +332,10 @@ const commands = [
     .addSubcommand(sub => sub.setName("lijst").setDescription("Bekijk de huidige rotatie."))
     .addSubcommand(sub => sub.setName("reset").setDescription("Wis de rotatie."))
     .addSubcommand(sub => sub.setName("volgende").setDescription("Sla de huidige speler over en ga naar de volgende."))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("liefdestaal")
+    .setDescription("Doe een korte liefdestaaltest en ontdek jouw liefdestaal!")
     .toJSON(),
   new SlashCommandBuilder()
     .setName("reload")
@@ -605,6 +705,18 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
+    if (interaction.commandName === "liefdestaal") {
+      const userId = interaction.user.id;
+      if (liefdestaalSessies.has(userId)) {
+        await interaction.reply({ content: '❌ Je bent al bezig met een liefdestaaltest! Beantwoord de openstaande vraag eerst.', ephemeral: true });
+        return;
+      }
+      const timeout = setTimeout(() => liefdestaalSessies.delete(userId), 10 * 60 * 1000);
+      liefdestaalSessies.set(userId, { channelId: interaction.channelId, antwoorden: [], vraagIndex: 0, timeout });
+      await interaction.reply({ embeds: [buildLiefdestaalVraagEmbed(0)], components: [buildLiefdestaalButtons()], ephemeral: true });
+      return;
+    }
+
     if (interaction.commandName === "statistieken") {
       await interaction.reply({ embeds: [buildStatistiekenEmbed()] });
       return;
@@ -864,6 +976,27 @@ client.on("interactionCreate", async (interaction) => {
         }
       } else {
         await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+      }
+      return;
+    }
+
+    if (interaction.customId === 'lt_A' || interaction.customId === 'lt_B') {
+      const userId = interaction.user.id;
+      const sessie = liefdestaalSessies.get(userId);
+      if (!sessie) {
+        await interaction.update({ content: '❌ Sessie verlopen. Gebruik `/liefdestaal` om opnieuw te beginnen.', embeds: [], components: [] });
+        return;
+      }
+      sessie.antwoorden.push(interaction.customId === 'lt_A' ? 'A' : 'B');
+      sessie.vraagIndex++;
+      if (sessie.vraagIndex >= LIEFDESTAAL_VRAGEN.length) {
+        clearTimeout(sessie.timeout);
+        liefdestaalSessies.delete(userId);
+        await interaction.update({ content: '✅ Test voltooid! Je uitslag wordt zo geplaatst...', embeds: [], components: [] });
+        const kanaal = client.channels.cache.get(sessie.channelId);
+        if (kanaal) await kanaal.send({ embeds: [buildLiefdestaalResultaatEmbed(user, sessie.antwoorden)] });
+      } else {
+        await interaction.update({ embeds: [buildLiefdestaalVraagEmbed(sessie.vraagIndex)], components: [buildLiefdestaalButtons()] });
       }
       return;
     }
