@@ -227,6 +227,171 @@ function buildLiefdestaalResultaatEmbed(user, antwoorden) {
     .setTimestamp();
 }
 
+// ─── Nooit heb ik ─────────────────────────────────────────────────────────────
+
+const NOOIT_STELLINGEN = [
+  "Nooit heb ik gedaan alsof ik ziek was om ergens onderuit te komen",
+  "Nooit heb ik iemand geblokkeerd na een date",
+  "Nooit heb ik midden in de nacht iemand een berichtje gestuurd",
+  "Nooit heb ik iemand gestalkt op social media",
+  "Nooit heb ik iemand kwaad gesproken achter zijn/haar rug",
+  "Nooit heb ik gelogen op mijn cv",
+  "Nooit heb ik iets gekocht en de bon bewaard om het later terug te brengen",
+  "Nooit heb ik gedanst op een tafel of bar",
+  "Nooit heb ik een geheim verteld dat ik had beloofd te bewaren",
+  "Nooit heb ik gedronken voor 12 uur 's middags",
+  "Nooit heb ik iemand's dagboek of berichten gelezen",
+  "Nooit heb ik gedaan alsof ik het druk had om iemand te vermijden",
+  "Nooit heb ik mij voorgedaan als iemand anders online",
+  "Nooit heb ik gehuild bij een romantische film",
+  "Nooit heb ik iemand anders de schuld gegeven van iets wat ik deed",
+  "Nooit heb ik ergens geslapen wat ik niet van plan was",
+  "Nooit heb ik een vreemde gekust",
+  "Nooit heb ik een ex midden in de nacht teruggebeld of -getsxt",
+  "Nooit heb ik iets gedaan wat eigenlijk niet mocht maar er toch mee weggekomen",
+  "Nooit heb ik gedaan alsof ik iemand niet zag om een gesprek te vermijden",
+];
+
+const nooitStemmen = new Map(); // sessionId -> { stelling, wel, nooit, timeout }
+
+function buildNooitEmbed(stelling, wel, nooit) {
+  return new EmbedBuilder()
+    .setColor(0xfee75c)
+    .setTitle('🍺 Nooit heb ik...')
+    .setDescription(`**${stelling}**\n\nKlik op een knop om te stemmen. Klik nogmaals om je stem in te trekken.`)
+    .setFooter({ text: `${wel.size + nooit.size} stem${wel.size + nooit.size === 1 ? '' : 'men'} uitgebracht` });
+}
+
+function buildNooitButtons(sessionId, welSize, nooitSize) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`nooit_wel_${sessionId}`).setLabel(`🍺 Wel gedaan (${welSize})`).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`nooit_nooit_${sessionId}`).setLabel(`✋ Nooit gedaan (${nooitSize})`).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`nooit_sluit_${sessionId}`).setLabel('🔒 Sluit stemming').setStyle(ButtonStyle.Danger),
+  );
+}
+
+// ─── Persoonlijkheidstest ──────────────────────────────────────────────────────
+
+const PERSOONLIJKHEID_VRAGEN = [
+  { vraag: 'Op een feestje...', a: { tekst: 'Maak ik makkelijk contact met mensen die ik niet ken', dim: 'E' }, b: { tekst: 'Blijf ik liever bij de mensen die ik al ken', dim: 'I' } },
+  { vraag: 'Na een drukke dag laad ik op door...', a: { tekst: 'Af te spreken met vrienden of gezelligheid op te zoeken', dim: 'E' }, b: { tekst: 'Even alleen te zijn en rust te nemen', dim: 'I' } },
+  { vraag: 'In groepsgesprekken...', a: { tekst: 'Neem ik graag het woord en praat ik mee', dim: 'E' }, b: { tekst: 'Luister ik liever en spreek ik wanneer het zinvol is', dim: 'I' } },
+  { vraag: 'Bij een moeilijke beslissing...', a: { tekst: 'Weeg ik de feiten en logica af', dim: 'T' }, b: { tekst: 'Volg ik mijn gevoel en wat goed voelt', dim: 'F' } },
+  { vraag: 'Als een vriend zijn hart lucht...', a: { tekst: 'Geef ik praktische adviezen', dim: 'T' }, b: { tekst: 'Luister ik en leef ik mee', dim: 'F' } },
+  { vraag: 'Ik vind het belangrijker om...', a: { tekst: 'Eerlijk en direct te zijn, ook als het pijn doet', dim: 'T' }, b: { tekst: 'Rekening te houden met andermans gevoelens', dim: 'F' } },
+  { vraag: 'Mijn weekend is het liefst...', a: { tekst: 'Van tevoren gepland met duidelijke afspraken', dim: 'J' }, b: { tekst: 'Spontaan ingevuld, we zien wel', dim: 'P' } },
+  { vraag: 'Met deadlines...', a: { tekst: 'Streef ik ruim van tevoren af', dim: 'J' }, b: { tekst: 'Werk ik het best onder druk op het laatste moment', dim: 'P' } },
+  { vraag: 'Mijn werkplek of kamer...', a: { tekst: 'Is netjes en georganiseerd', dim: 'J' }, b: { tekst: 'Is een creatieve chaos waar ik mijn weg in vind', dim: 'P' } },
+];
+
+const PERSOONLIJKHEID_TYPES = {
+  ETJ: { naam: 'De Commandant', kleur: 0xed4245, beschrijving: 'Doelgericht, georganiseerd en direct. Jij weet wat je wil en gaat ervoor.' },
+  EFJ: { naam: 'De Verbinder', kleur: 0x57f287, beschrijving: 'Warm, sociaal en empathisch. Jij houdt de groep bij elkaar.' },
+  ETP: { naam: 'De Debater', kleur: 0xffa500, beschrijving: 'Nieuwsgierig, energiek en altijd in voor een goed argument.' },
+  EFP: { naam: 'De Levensgenieter', kleur: 0xfee75c, beschrijving: 'Enthousiast, spontaan en altijd het middelpunt van de avond.' },
+  ITJ: { naam: 'De Strateeg', kleur: 0x5865f2, beschrijving: 'Rustig, analytisch en planmatig. Jij denkt altijd drie stappen vooruit.' },
+  IFJ: { naam: 'De Dromer', kleur: 0xeb459e, beschrijving: 'Diep, intuïtief en warmhartig. Jij ziet wat anderen niet zien.' },
+  ITP: { naam: 'De Denker', kleur: 0x99aab5, beschrijving: 'Onafhankelijk, analytisch en vol verrassende invalshoeken.' },
+  IFP: { naam: 'De Kunstenaar', kleur: 0x9b59b6, beschrijving: 'Creatief, authentiek en altijd trouw aan jezelf.' },
+};
+
+const persoonlijkheidSessies = new Map(); // userId -> { channelId, antwoorden, vraagIndex, timeout }
+
+function buildPersoonlijkheidVraagEmbed(index) {
+  const v = PERSOONLIJKHEID_VRAGEN[index];
+  const voortgang = '█'.repeat(index) + '░'.repeat(PERSOONLIJKHEID_VRAGEN.length - index);
+  return new EmbedBuilder()
+    .setColor(0x9b59b6)
+    .setTitle(`🧠 Persoonlijkheidstest — Vraag ${index + 1}/${PERSOONLIJKHEID_VRAGEN.length}`)
+    .setDescription(`**${v.vraag}**\n\n🅰️ ${v.a.tekst}\n\n🅱️ ${v.b.tekst}`)
+    .setFooter({ text: `Voortgang: ${voortgang}` });
+}
+
+function buildPersoonlijkheidButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('pt_A').setLabel('🅰️ A').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('pt_B').setLabel('🅱️ B').setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function buildPersoonlijkheidResultaatEmbed(user, antwoorden) {
+  const scores = { E: 0, I: 0, T: 0, F: 0, J: 0, P: 0 };
+  antwoorden.forEach((keuze, i) => {
+    scores[keuze === 'A' ? PERSOONLIJKHEID_VRAGEN[i].a.dim : PERSOONLIJKHEID_VRAGEN[i].b.dim]++;
+  });
+  const type = (scores.E >= scores.I ? 'E' : 'I') + (scores.T >= scores.F ? 'T' : 'F') + (scores.J >= scores.P ? 'J' : 'P');
+  const info = PERSOONLIJKHEID_TYPES[type];
+  const naam = user.displayName ?? user.username;
+  const scoresTekst = [
+    `E ${'█'.repeat(scores.E)}${'░'.repeat(3 - scores.E)} | ${'░'.repeat(3 - scores.I)}${'█'.repeat(scores.I)} I`,
+    `T ${'█'.repeat(scores.T)}${'░'.repeat(3 - scores.T)} | ${'░'.repeat(3 - scores.F)}${'█'.repeat(scores.F)} F`,
+    `J ${'█'.repeat(scores.J)}${'░'.repeat(3 - scores.J)} | ${'░'.repeat(3 - scores.P)}${'█'.repeat(scores.P)} P`,
+  ].join('\n');
+  return new EmbedBuilder()
+    .setColor(info.kleur)
+    .setTitle(`🧠 Persoonlijkheid van ${naam}: ${type}`)
+    .setDescription(`**${info.naam}**\n\n${info.beschrijving}\n\`\`\`${scoresTekst}\`\`\``)
+    .setFooter({ text: 'Geïnspireerd op Myers-Briggs Type Indicator (MBTI)' })
+    .setTimestamp();
+}
+
+// ─── Relatietest ───────────────────────────────────────────────────────────────
+
+const RELATIE_VRAGEN = [
+  { vraag: 'Liever...', a: 'Rustige avond thuis', b: 'Avond vol gezelligheid met vrienden' },
+  { vraag: 'Liever...', a: 'Strand en zon', b: 'Bergen en natuur' },
+  { vraag: 'Liever...', a: 'Alles van tevoren plannen', b: 'Spontaan beslissen' },
+  { vraag: 'Liever...', a: 'Een film kijken', b: 'Een spelletje spelen' },
+  { vraag: 'Liever...', a: 'Vroeg opstaan en de ochtend benutten', b: 'Lang uitslapen en rustig beginnen' },
+  { vraag: 'Liever...', a: 'Romantisch diner buiten de deur', b: 'Gezellig thuis samen koken' },
+  { vraag: 'Liever...', a: 'Zekerheid en stabiliteit', b: 'Avontuur en nieuwe ervaringen' },
+  { vraag: 'Liever...', a: 'Praten over gevoelens', b: 'Problemen direct aanpakken' },
+  { vraag: 'Liever...', a: 'Weinig, hechte vriendschappen', b: 'Groot netwerk met veel contacten' },
+  { vraag: 'Liever...', a: 'Strandvakantie', b: 'Stedentrip of actieve vakantie' },
+];
+
+const RELATIE_SCORES = [
+  { min: 9, tekst: '💑 Zielsverbonden! Jullie zijn op vrijwel alles hetzelfde afgestemd.' },
+  { min: 7, tekst: '💕 Super goed op elkaar afgestemd! Jullie denken op de meeste dingen hetzelfde.' },
+  { min: 5, tekst: '⚡ Een mooie mix! Jullie lijken op sommige dingen maar zijn op andere compleet anders.' },
+  { min: 3, tekst: '🤔 Tegengestelden trekken aan. Jullie hebben genoeg om over te praten.' },
+  { min: 0, tekst: '😅 Compleet tegengesteld — of juist perfect voor elkaar?' },
+];
+
+const relatieSessies = new Map(); // sessionId -> { channelId, speler1, speler2, timeout }
+const relatieSpelers = new Map(); // userId -> sessionId
+
+function buildRelatieVraagEmbed(index, naam) {
+  const v = RELATIE_VRAGEN[index];
+  const voortgang = '█'.repeat(index) + '░'.repeat(RELATIE_VRAGEN.length - index);
+  return new EmbedBuilder()
+    .setColor(0xeb459e)
+    .setTitle(`💑 Relatietest — Vraag ${index + 1}/${RELATIE_VRAGEN.length}`)
+    .setDescription(`**${v.vraag}**\n\n🅰️ ${v.a}\n\n🅱️ ${v.b}`)
+    .setFooter({ text: `${naam} • Voortgang: ${voortgang}` });
+}
+
+function buildRelatieButtons(sessionId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`rt_A_${sessionId}`).setLabel('🅰️ A').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`rt_B_${sessionId}`).setLabel('🅱️ B').setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function buildRelatieResultaatEmbed(s) {
+  const matches = RELATIE_VRAGEN.map((_, i) => s.speler1.antwoorden[i] === s.speler2.antwoorden[i]);
+  const score = matches.filter(Boolean).length;
+  const pct = Math.round(score / RELATIE_VRAGEN.length * 100);
+  const scoreInfo = RELATIE_SCORES.find(r => score >= r.min);
+  const matchBar = matches.map(m => m ? '✅' : '❌').join(' ');
+  const kleur = score >= 7 ? 0xeb459e : score >= 5 ? 0xfee75c : 0x5865f2;
+  return new EmbedBuilder()
+    .setColor(kleur)
+    .setTitle(`💑 ${s.speler1.naam} & ${s.speler2.naam} — ${pct}% Match`)
+    .setDescription(`${scoreInfo.tekst}\n\n${matchBar}\n\n**${score}/${RELATIE_VRAGEN.length}** vragen hetzelfde beantwoord`)
+    .setTimestamp();
+}
+
 // ─── Beurtrotatie ──────────────────────────────────────────────────────────────
 
 const beurtenLijst = []; // [{ id, naam }]
@@ -336,6 +501,28 @@ const commands = [
   new SlashCommandBuilder()
     .setName("liefdestaal")
     .setDescription("Doe een korte liefdestaaltest en ontdek jouw liefdestaal!")
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("nooit")
+    .setDescription("Doe een ronde 'Nooit heb ik...' met de groep!")
+    .addStringOption(opt =>
+      opt.setName("stelling")
+        .setDescription("De stelling (optioneel, anders kiest de bot er een)")
+        .setRequired(false)
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("persoonlijkheid")
+    .setDescription("Doe een korte persoonlijkheidstest en ontdek jouw type!")
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName("relatietest")
+    .setDescription("Test hoe goed jij en een andere speler bij elkaar passen!")
+    .addUserOption(opt =>
+      opt.setName("speler")
+        .setDescription("De speler waarmee je de test doet")
+        .setRequired(true)
+    )
     .toJSON(),
   new SlashCommandBuilder()
     .setName("reload")
@@ -705,6 +892,76 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
+    if (interaction.commandName === "nooit") {
+      const invoer = interaction.options.getString("stelling");
+      const stelling = invoer?.trim() || NOOIT_STELLINGEN[Math.floor(Math.random() * NOOIT_STELLINGEN.length)];
+      const sessionId = interaction.id;
+      const timeout = setTimeout(() => nooitStemmen.delete(sessionId), 2 * 60 * 60 * 1000);
+      nooitStemmen.set(sessionId, { stelling, wel: new Map(), nooit: new Map(), timeout });
+      await interaction.reply({
+        embeds: [buildNooitEmbed(stelling, new Map(), new Map())],
+        components: [buildNooitButtons(sessionId, 0, 0)],
+      });
+      return;
+    }
+
+    if (interaction.commandName === "persoonlijkheid") {
+      const userId = interaction.user.id;
+      if (persoonlijkheidSessies.has(userId)) {
+        await interaction.reply({ content: '❌ Je bent al bezig met een persoonlijkheidstest!', ephemeral: true });
+        return;
+      }
+      const timeout = setTimeout(() => persoonlijkheidSessies.delete(userId), 10 * 60 * 1000);
+      persoonlijkheidSessies.set(userId, { channelId: interaction.channelId, antwoorden: [], vraagIndex: 0, timeout });
+      await interaction.reply({ embeds: [buildPersoonlijkheidVraagEmbed(0)], components: [buildPersoonlijkheidButtons()], ephemeral: true });
+      return;
+    }
+
+    if (interaction.commandName === "relatietest") {
+      const userId = interaction.user.id;
+      const targetUser = interaction.options.getUser("speler");
+      const targetLid = interaction.options.getMember("speler");
+      if (targetUser.id === userId) {
+        await interaction.reply({ content: '❌ Je kunt geen relatietest doen met jezelf!', ephemeral: true });
+        return;
+      }
+      if (targetUser.bot) {
+        await interaction.reply({ content: '❌ Je kunt geen relatietest doen met een bot!', ephemeral: true });
+        return;
+      }
+      if (relatieSpelers.has(userId) || relatieSpelers.has(targetUser.id)) {
+        await interaction.reply({ content: '❌ Eén van jullie doet al mee aan een relatietest.', ephemeral: true });
+        return;
+      }
+      const sessionId = interaction.id;
+      const initiatorNaam = user.displayName ?? interaction.user.username;
+      const targetNaam = targetLid?.displayName ?? targetUser.username;
+      const timeout = setTimeout(() => {
+        const s = relatieSessies.get(sessionId);
+        if (s) { relatieSpelers.delete(s.speler1.id); relatieSpelers.delete(s.speler2.id); }
+        relatieSessies.delete(sessionId);
+      }, 15 * 60 * 1000);
+      relatieSessies.set(sessionId, {
+        channelId: interaction.channelId,
+        speler1: { id: userId, naam: initiatorNaam, antwoorden: [] },
+        speler2: { id: targetUser.id, naam: targetNaam, antwoorden: [] },
+        timeout,
+      });
+      relatieSpelers.set(userId, sessionId);
+      relatieSpelers.set(targetUser.id, sessionId);
+      await interaction.reply({ embeds: [buildRelatieVraagEmbed(0, initiatorNaam)], components: [buildRelatieButtons(sessionId)], ephemeral: true });
+      await interaction.followUp({
+        embeds: [new EmbedBuilder()
+          .setColor(0xeb459e)
+          .setTitle('💑 Relatietest uitdaging!')
+          .setDescription(`**${initiatorNaam}** daagt **${targetNaam}** uit voor een relatietest!\n\n<@${targetUser.id}>, klik op de knop om jouw vragen te beantwoorden.`)],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`rt_start_${sessionId}`).setLabel('▶️ Start mijn test').setStyle(ButtonStyle.Primary)
+        )],
+      });
+      return;
+    }
+
     if (interaction.commandName === "liefdestaal") {
       const userId = interaction.user.id;
       if (liefdestaalSessies.has(userId)) {
@@ -976,6 +1233,104 @@ client.on("interactionCreate", async (interaction) => {
         }
       } else {
         await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user)], components: [buildActieButtons("doen")] });
+      }
+      return;
+    }
+
+    if (interaction.customId.startsWith('nooit_')) {
+      const delen = interaction.customId.split('_');
+      const actie = delen[1];
+      const sessionId = delen.slice(2).join('_');
+      const sessie = nooitStemmen.get(sessionId);
+      if (!sessie) { await interaction.reply({ content: 'Stemming verlopen.', ephemeral: true }); return; }
+      const userId = interaction.user.id;
+      const naam = interaction.member?.displayName ?? interaction.user.username;
+      if (actie === 'sluit') {
+        clearTimeout(sessie.timeout);
+        nooitStemmen.delete(sessionId);
+        const welNamen = [...sessie.wel.values()].join(', ') || 'niemand';
+        const nooitNamen = [...sessie.nooit.values()].join(', ') || 'niemand';
+        await interaction.update({
+          embeds: [new EmbedBuilder()
+            .setColor(0xfee75c)
+            .setTitle('🍺 Nooit heb ik... — Uitslag')
+            .setDescription(`**${sessie.stelling}**`)
+            .addFields(
+              { name: `🍺 Wel gedaan (${sessie.wel.size})`, value: welNamen, inline: true },
+              { name: `✋ Nooit gedaan (${sessie.nooit.size})`, value: nooitNamen, inline: true }
+            )
+            .setTimestamp()],
+          components: [],
+        });
+        return;
+      }
+      if (actie === 'wel') {
+        if (sessie.wel.has(userId)) { sessie.wel.delete(userId); }
+        else { sessie.wel.set(userId, naam); sessie.nooit.delete(userId); }
+      } else {
+        if (sessie.nooit.has(userId)) { sessie.nooit.delete(userId); }
+        else { sessie.nooit.set(userId, naam); sessie.wel.delete(userId); }
+      }
+      await interaction.update({ components: [buildNooitButtons(sessionId, sessie.wel.size, sessie.nooit.size)] });
+      return;
+    }
+
+    if (interaction.customId === 'pt_A' || interaction.customId === 'pt_B') {
+      const userId = interaction.user.id;
+      const sessie = persoonlijkheidSessies.get(userId);
+      if (!sessie) { await interaction.update({ content: '❌ Sessie verlopen. Gebruik `/persoonlijkheid` om opnieuw te beginnen.', embeds: [], components: [] }); return; }
+      sessie.antwoorden.push(interaction.customId === 'pt_A' ? 'A' : 'B');
+      sessie.vraagIndex++;
+      if (sessie.vraagIndex >= PERSOONLIJKHEID_VRAGEN.length) {
+        clearTimeout(sessie.timeout);
+        persoonlijkheidSessies.delete(userId);
+        await interaction.update({ content: '✅ Test voltooid! Je resultaat wordt zo geplaatst...', embeds: [], components: [] });
+        const kanaal = client.channels.cache.get(sessie.channelId);
+        if (kanaal) await kanaal.send({ embeds: [buildPersoonlijkheidResultaatEmbed(user, sessie.antwoorden)] });
+      } else {
+        await interaction.update({ embeds: [buildPersoonlijkheidVraagEmbed(sessie.vraagIndex)], components: [buildPersoonlijkheidButtons()] });
+      }
+      return;
+    }
+
+    if (interaction.customId.startsWith('rt_')) {
+      const delen = interaction.customId.split('_');
+      const actie = delen[1];
+      const sessionId = delen.slice(2).join('_');
+      const sessie = relatieSessies.get(sessionId);
+      if (!sessie) { await interaction.reply({ content: '❌ Sessie verlopen.', ephemeral: true }); return; }
+      const userId = interaction.user.id;
+
+      if (actie === 'start') {
+        if (userId !== sessie.speler2.id) { await interaction.reply({ content: '❌ Deze uitdaging is niet voor jou.', ephemeral: true }); return; }
+        await interaction.update({
+          embeds: [new EmbedBuilder().setColor(0xeb459e).setTitle('💑 Relatietest gestart!').setDescription(`**${sessie.speler2.naam}** doet mee! De uitslag volgt zodra jullie allebei klaar zijn.`)],
+          components: [],
+        });
+        await interaction.followUp({ embeds: [buildRelatieVraagEmbed(0, sessie.speler2.naam)], components: [buildRelatieButtons(sessionId)], ephemeral: true });
+        return;
+      }
+
+      const isSpeler1 = userId === sessie.speler1.id;
+      const isSpeler2 = userId === sessie.speler2.id;
+      if (!isSpeler1 && !isSpeler2) { await interaction.reply({ content: '❌ Jij doet niet mee aan deze relatietest.', ephemeral: true }); return; }
+
+      const speler = isSpeler1 ? sessie.speler1 : sessie.speler2;
+      const keuze = actie === 'A' ? 'A' : 'B';
+      speler.antwoorden.push(keuze);
+
+      if (speler.antwoorden.length >= RELATIE_VRAGEN.length) {
+        await interaction.update({ content: '✅ Jouw antwoorden zijn opgeslagen! Wachten op de ander...', embeds: [], components: [] });
+        if (sessie.speler1.antwoorden.length >= RELATIE_VRAGEN.length && sessie.speler2.antwoorden.length >= RELATIE_VRAGEN.length) {
+          clearTimeout(sessie.timeout);
+          relatieSpelers.delete(sessie.speler1.id);
+          relatieSpelers.delete(sessie.speler2.id);
+          relatieSessies.delete(sessionId);
+          const kanaal = client.channels.cache.get(sessie.channelId);
+          if (kanaal) await kanaal.send({ embeds: [buildRelatieResultaatEmbed(sessie)] });
+        }
+      } else {
+        await interaction.update({ embeds: [buildRelatieVraagEmbed(speler.antwoorden.length, speler.naam)], components: [buildRelatieButtons(sessionId)] });
       }
       return;
     }
