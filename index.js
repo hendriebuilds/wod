@@ -9,6 +9,7 @@ import {
   REST,
   Routes,
   PermissionFlagsBits,
+  ChannelType,
 } from "discord.js";
 import * as dotenv from "dotenv";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
@@ -60,21 +61,51 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_nooit_guild ON nooit_stellingen(guild_id);
 `);
 
+// Schema migraties voor nieuwe kolommen
+try { db.exec("ALTER TABLE instellingen ADD COLUMN auto_categorie_mappen INTEGER NOT NULL DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE instellingen ADD COLUMN categorie_per_chat INTEGER NOT NULL DEFAULT 0"); } catch {}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS channel_categorie (
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    categorie TEXT NOT NULL,
+    PRIMARY KEY (guild_id, channel_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_channel_cat ON channel_categorie(guild_id, channel_id);
+`);
+
 const stmts = {
-  getVragen:          db.prepare("SELECT * FROM vragen WHERE guild_id = ? AND type = ? ORDER BY id"),
-  countVragen:        db.prepare("SELECT COUNT(*) AS cnt FROM vragen WHERE guild_id = ? AND type = ?"),
-  insertVraag:        db.prepare("INSERT INTO vragen (guild_id, type, tekst, categorie, dm_modus) VALUES (?, ?, ?, ?, ?)"),
-  updateVraag:        db.prepare("UPDATE vragen SET tekst = ?, categorie = ?, dm_modus = ? WHERE id = ? AND guild_id = ?"),
-  deleteVraagById:    db.prepare("DELETE FROM vragen WHERE id = ? AND guild_id = ?"),
-  getInstellingen:    db.prepare("SELECT * FROM instellingen WHERE guild_id = ?"),
-  upsertInstellingen: db.prepare("INSERT INTO instellingen (guild_id, cooldown_ms, dm_modus) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET cooldown_ms = excluded.cooldown_ms, dm_modus = excluded.dm_modus"),
-  ensureInstellingen:  db.prepare("INSERT OR IGNORE INTO instellingen (guild_id) VALUES (?)"),
-  getNooitStelling:    db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY RANDOM() LIMIT 1"),
-  getAllNooit:         db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY id"),
-  countNooit:         db.prepare("SELECT COUNT(*) AS cnt FROM nooit_stellingen WHERE guild_id = ?"),
-  insertNooit:        db.prepare("INSERT INTO nooit_stellingen (guild_id, tekst) VALUES (?, ?)"),
-  updateNooit:        db.prepare("UPDATE nooit_stellingen SET tekst = ? WHERE id = ? AND guild_id = ?"),
-  deleteNooit:        db.prepare("DELETE FROM nooit_stellingen WHERE id = ? AND guild_id = ?"),
+  getVragen:              db.prepare("SELECT * FROM vragen WHERE guild_id = ? AND type = ? ORDER BY id"),
+  getVragenByCategorie:   db.prepare("SELECT * FROM vragen WHERE guild_id = ? AND type = ? AND categorie = ? ORDER BY id"),
+  countVragen:            db.prepare("SELECT COUNT(*) AS cnt FROM vragen WHERE guild_id = ? AND type = ?"),
+  insertVraag:            db.prepare("INSERT INTO vragen (guild_id, type, tekst, categorie, dm_modus) VALUES (?, ?, ?, ?, ?)"),
+  updateVraag:            db.prepare("UPDATE vragen SET tekst = ?, categorie = ?, dm_modus = ? WHERE id = ? AND guild_id = ?"),
+  deleteVraagById:        db.prepare("DELETE FROM vragen WHERE id = ? AND guild_id = ?"),
+  getInstellingen:        db.prepare("SELECT * FROM instellingen WHERE guild_id = ?"),
+  upsertInstellingen:     db.prepare(`
+    INSERT INTO instellingen (guild_id, cooldown_ms, dm_modus, auto_categorie_mappen, categorie_per_chat)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      cooldown_ms = excluded.cooldown_ms,
+      dm_modus = excluded.dm_modus,
+      auto_categorie_mappen = excluded.auto_categorie_mappen,
+      categorie_per_chat = excluded.categorie_per_chat
+  `),
+  ensureInstellingen:     db.prepare("INSERT OR IGNORE INTO instellingen (guild_id) VALUES (?)"),
+  getNooitStelling:       db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY RANDOM() LIMIT 1"),
+  getAllNooit:             db.prepare("SELECT * FROM nooit_stellingen WHERE guild_id = ? ORDER BY id"),
+  countNooit:             db.prepare("SELECT COUNT(*) AS cnt FROM nooit_stellingen WHERE guild_id = ?"),
+  insertNooit:            db.prepare("INSERT INTO nooit_stellingen (guild_id, tekst) VALUES (?, ?)"),
+  updateNooit:            db.prepare("UPDATE nooit_stellingen SET tekst = ? WHERE id = ? AND guild_id = ?"),
+  deleteNooit:            db.prepare("DELETE FROM nooit_stellingen WHERE id = ? AND guild_id = ?"),
+  getChannelCategorie:    db.prepare("SELECT categorie FROM channel_categorie WHERE guild_id = ? AND channel_id = ?"),
+  getAllChannelCategorie:  db.prepare("SELECT * FROM channel_categorie WHERE guild_id = ? ORDER BY channel_id"),
+  upsertChannelCategorie: db.prepare(`
+    INSERT INTO channel_categorie (guild_id, channel_id, categorie) VALUES (?, ?, ?)
+    ON CONFLICT(guild_id, channel_id) DO UPDATE SET categorie = excluded.categorie
+  `),
+  deleteChannelCategorie: db.prepare("DELETE FROM channel_categorie WHERE guild_id = ? AND channel_id = ?"),
+  getDistinctCats:        db.prepare("SELECT DISTINCT categorie FROM vragen WHERE guild_id = ? ORDER BY categorie"),
 };
 
 function getRandomNooit(guildId) {
@@ -86,7 +117,19 @@ function getRandomNooit(guildId) {
 function dbGetInstellingen(guildId) {
   stmts.ensureInstellingen.run(guildId);
   const row = stmts.getInstellingen.get(guildId);
-  return { cooldownMs: row.cooldown_ms, dmModus: row.dm_modus === 1 };
+  return {
+    cooldownMs: row.cooldown_ms,
+    dmModus: row.dm_modus === 1,
+    autoCategorieMappen: row.auto_categorie_mappen === 1,
+    categoriePerChat: row.categorie_per_chat === 1,
+  };
+}
+
+function getCategorieFilter(guildId, channelId) {
+  const inst = dbGetInstellingen(guildId);
+  if (!inst.categoriePerChat) return null;
+  const row = stmts.getChannelCategorie.get(guildId, channelId);
+  return row ? row.categorie : null;
 }
 
 // ─── Per-guild in-memory state ─────────────────────────────────────────────────
@@ -114,8 +157,13 @@ function getBeurten(guildId) {
 
 // ─── Vraag helpers ─────────────────────────────────────────────────────────────
 
-function getVraag(guildId, type) {
-  const vragen = stmts.getVragen.all(guildId, type);
+function getVraag(guildId, type, categorieFilter = null) {
+  let vragen = categorieFilter
+    ? stmts.getVragenByCategorie.all(guildId, type, categorieFilter)
+    : stmts.getVragen.all(guildId, type);
+  if (vragen.length === 0 && categorieFilter) {
+    vragen = stmts.getVragen.all(guildId, type); // fallback naar alle categorieën
+  }
   if (vragen.length === 0) return null;
   const gebruikte = getGebruikte(guildId, type);
   if (gebruikte.size >= vragen.length) {
@@ -123,7 +171,8 @@ function getVraag(guildId, type) {
     console.log(`🔄 Alle ${type} vragen geweest voor guild ${guildId}, lijst gereset.`);
   }
   const beschikbaar = vragen.filter(v => !gebruikte.has(v.id));
-  const vraag = beschikbaar[Math.floor(Math.random() * beschikbaar.length)];
+  const pool = beschikbaar.length > 0 ? beschikbaar : vragen;
+  const vraag = pool[Math.floor(Math.random() * pool.length)];
   gebruikte.add(vraag.id);
   return vraag;
 }
@@ -803,7 +852,8 @@ client.on("interactionCreate", async (interaction) => {
           await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        const vraag = getVraag(guildId, 'waarheid');
+        const catFilter = getCategorieFilter(guildId, interaction.channelId);
+        const vraag = getVraag(guildId, 'waarheid', catFilter);
         if (!vraag) {
           await interaction.reply({ content: '❌ Er zijn geen waarheidsvragen. Voeg ze toe via het admin panel.', ephemeral: true });
           return;
@@ -847,7 +897,8 @@ client.on("interactionCreate", async (interaction) => {
           await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
         }
       } else {
-        const opdracht = getVraag(guildId, 'doen');
+        const catFilter = getCategorieFilter(guildId, interaction.channelId);
+        const opdracht = getVraag(guildId, 'doen', catFilter);
         if (!opdracht) {
           await interaction.reply({ content: '❌ Er zijn geen doe-opdrachten. Voeg ze toe via het admin panel.', ephemeral: true });
           return;
@@ -1118,7 +1169,8 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.customId === "kies_waarheid") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
-      const vraag = getVraag(guildId, 'waarheid');
+      const catFilter = getCategorieFilter(guildId, interaction.channelId);
+      const vraag = getVraag(guildId, 'waarheid', catFilter);
       if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
       getSessie(guildId).aantalWaarheid++;
       const inst = dbGetInstellingen(guildId);
@@ -1137,7 +1189,8 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.customId === "kies_doen") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
-      const opdracht = getVraag(guildId, 'doen');
+      const catFilter = getCategorieFilter(guildId, interaction.channelId);
+      const opdracht = getVraag(guildId, 'doen', catFilter);
       if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
       getSessie(guildId).aantalDoen++;
       const inst = dbGetInstellingen(guildId);
@@ -1156,9 +1209,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.customId === "kies_random") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
+      const catFilter = getCategorieFilter(guildId, interaction.channelId);
       const inst = dbGetInstellingen(guildId);
       if (Math.random() < 0.5) {
-        const vraag = getVraag(guildId, 'waarheid');
+        const vraag = getVraag(guildId, 'waarheid', catFilter);
         if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
         getSessie(guildId).aantalWaarheid++;
         if (inst.dmModus || vraag.dm_modus) {
@@ -1172,7 +1226,7 @@ client.on("interactionCreate", async (interaction) => {
           await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        const opdracht = getVraag(guildId, 'doen');
+        const opdracht = getVraag(guildId, 'doen', catFilter);
         if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
         getSessie(guildId).aantalDoen++;
         if (inst.dmModus || opdracht.dm_modus) {
@@ -1193,7 +1247,8 @@ client.on("interactionCreate", async (interaction) => {
       const stats = getSessie(guildId);
       const huidig = stats.rerollTeller.get(user.id ?? interaction.user.id) ?? { naam: user.displayName, teller: 0 };
       stats.rerollTeller.set(user.id ?? interaction.user.id, { naam: user.displayName, teller: huidig.teller + 1 });
-      const vraag = getVraag(guildId, 'waarheid');
+      const catFilter = getCategorieFilter(guildId, interaction.channelId);
+      const vraag = getVraag(guildId, 'waarheid', catFilter);
       if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
@@ -1215,7 +1270,8 @@ client.on("interactionCreate", async (interaction) => {
       const stats = getSessie(guildId);
       const huidig = stats.rerollTeller.get(user.id ?? interaction.user.id) ?? { naam: user.displayName, teller: 0 };
       stats.rerollTeller.set(user.id ?? interaction.user.id, { naam: user.displayName, teller: huidig.teller + 1 });
-      const opdracht = getVraag(guildId, 'doen');
+      const catFilter = getCategorieFilter(guildId, interaction.channelId);
+      const opdracht = getVraag(guildId, 'doen', catFilter);
       if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
@@ -1234,7 +1290,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.customId === "passen_waarheid") {
-      const vraag = getVraag(guildId, 'waarheid');
+      const vraag = getVraag(guildId, 'waarheid', getCategorieFilter(guildId, interaction.channelId));
       if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
@@ -1253,7 +1309,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.customId === "passen_doen") {
-      const opdracht = getVraag(guildId, 'doen');
+      const opdracht = getVraag(guildId, 'doen', getCategorieFilter(guildId, interaction.channelId));
       if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
@@ -1681,11 +1737,13 @@ app.get("/api/instellingen", requireAuth, requireGuild, (req, res) => {
 app.put("/api/instellingen", requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const inst = dbGetInstellingen(guildId);
-  const { cooldownMs, dmModus } = req.body;
+  const { cooldownMs, dmModus, autoCategorieMappen, categoriePerChat } = req.body;
   const newCooldown = typeof cooldownMs === "number" && cooldownMs >= 0 && cooldownMs <= 10000 ? cooldownMs : inst.cooldownMs;
   const newDM = typeof dmModus === "boolean" ? dmModus : inst.dmModus;
-  stmts.upsertInstellingen.run(guildId, newCooldown, newDM ? 1 : 0);
-  res.json({ cooldownMs: newCooldown, dmModus: newDM });
+  const newAutoMap = typeof autoCategorieMappen === "boolean" ? autoCategorieMappen : inst.autoCategorieMappen;
+  const newPerChat = typeof categoriePerChat === "boolean" ? categoriePerChat : inst.categoriePerChat;
+  stmts.upsertInstellingen.run(guildId, newCooldown, newDM ? 1 : 0, newAutoMap ? 1 : 0, newPerChat ? 1 : 0);
+  res.json({ cooldownMs: newCooldown, dmModus: newDM, autoCategorieMappen: newAutoMap, categoriePerChat: newPerChat });
 });
 
 // ── Nooit-stellingen API ──
@@ -1717,6 +1775,91 @@ app.delete("/api/nooit/:id", requireAuth, requireGuild, (req, res) => {
   const result = stmts.deleteNooit.run(id, req.session.activeGuildId);
   if (result.changes === 0) return res.status(404).json({ error: "Stelling niet gevonden." });
   res.json({ ok: true });
+});
+
+// ── Channel-categorie mapping API ──
+
+app.get("/api/channel-categorie", requireAuth, requireGuild, (req, res) => {
+  const mappings = stmts.getAllChannelCategorie.all(req.session.activeGuildId);
+  res.json(mappings);
+});
+
+app.post("/api/channel-categorie", requireAuth, requireGuild, (req, res) => {
+  const guildId = req.session.activeGuildId;
+  const { channelId, categorie } = req.body;
+  if (!channelId || !categorie?.trim()) return res.status(400).json({ error: "channelId en categorie zijn verplicht." });
+  stmts.upsertChannelCategorie.run(guildId, channelId, categorie.trim());
+  res.json({ ok: true });
+});
+
+app.delete("/api/channel-categorie/:channelId", requireAuth, requireGuild, (req, res) => {
+  stmts.deleteChannelCategorie.run(req.session.activeGuildId, req.params.channelId);
+  res.json({ ok: true });
+});
+
+// ── Discord kanalen API ──
+
+app.get("/api/kanalen", requireAuth, requireGuild, (req, res) => {
+  const guild = client.guilds.cache.get(req.session.activeGuildId);
+  if (!guild) return res.status(404).json({ error: "Server niet gevonden." });
+  const kanalen = guild.channels.cache
+    .filter(c => c.type === ChannelType.GuildText)
+    .map(c => ({ id: c.id, name: c.name, parentName: c.parent?.name ?? null }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  res.json(kanalen);
+});
+
+// ── Categoriemappen aanmaken API ──
+
+app.post("/api/categoriemappen/aanmaken", requireAuth, requireGuild, async (req, res) => {
+  const guildId = req.session.activeGuildId;
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return res.status(404).json({ error: "Server niet gevonden." });
+  try {
+    const categories = stmts.getDistinctCats.all(guildId).map(r => r.categorie);
+    if (categories.length === 0) return res.status(400).json({ error: "Geen vraagcategorieën gevonden. Voeg eerst vragen toe." });
+
+    const catChannel = await guild.channels.create({
+      name: '🎮 Waarheid of Doen',
+      type: ChannelType.GuildCategory,
+    });
+
+    const created = [];
+    for (const cat of categories) {
+      const channelName = cat.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'overig';
+      const channel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: catChannel.id,
+      });
+      stmts.upsertChannelCategorie.run(guildId, channel.id, cat);
+      created.push({ channelId: channel.id, channelName: channel.name, categorie: cat });
+    }
+
+    const inst = dbGetInstellingen(guildId);
+    stmts.upsertInstellingen.run(guildId, inst.cooldownMs, inst.dmModus ? 1 : 0, 1, inst.categoriePerChat ? 1 : 0);
+
+    res.json({ ok: true, aangemaakt: created });
+  } catch (err) {
+    console.error("Fout bij aanmaken categoriemappen:", err.message);
+    res.status(500).json({ error: "Fout bij aanmaken kanalen: " + err.message });
+  }
+});
+
+// ── Reset-configuratie API ──
+
+app.post("/api/reset-config", requireAuth, requireGuild, (req, res) => {
+  const guildId = req.session.activeGuildId;
+  stmts.upsertInstellingen.run(guildId, 1500, 0, 0, 0);
+  db.prepare("DELETE FROM channel_categorie WHERE guild_id = ?").run(guildId);
+  res.json({ ok: true });
+});
+
+// ── Beschikbare vraagcategorieën API ──
+
+app.get("/api/categorieen", requireAuth, requireGuild, (req, res) => {
+  const cats = stmts.getDistinctCats.all(req.session.activeGuildId).map(r => r.categorie);
+  res.json(cats);
 });
 
 // ── Configuratie API ──
