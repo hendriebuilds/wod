@@ -41,4 +41,11 @@ export const api = {
   addNooit: (tekst) => req('POST', '/api/nooit', { tekst }),
   updateNooit: (id, tekst) => req('PUT', `/api/nooit/${id}`, { tekst }),
   deleteNooit: (id) => req('DELETE', `/api/nooit/${id}`),
+  getChannelCategorie: () => req('GET', '/api/channel-categorie'),
+  setChannelCategorie: (channelId, categorie) => req('POST', '/api/channel-categorie', { channelId, categorie }),
+  deleteChannelCategorie: (channelId) => req('DELETE', `/api/channel-categorie/${channelId}`),
+  getKanalen: () => req('GET', '/api/kanalen'),
+  getCategorieen: () => req('GET', '/api/categorieen'),
+  createCategorieMappen: () => req('POST', '/api/categoriemappen/aanmaken'),
+  resetConfig: () => req('POST', '/api/reset-config'),
 };
