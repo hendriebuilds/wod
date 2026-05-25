@@ -5,13 +5,20 @@ import Statistieken from '../pages/Statistieken.jsx';
 import Instellingen from '../pages/Instellingen.jsx';
 import Configuratie from '../pages/Configuratie.jsx';
 import Nooit from '../pages/Nooit.jsx';
+import Sessies from '../pages/Sessies.jsx';
+import Servers from '../pages/Servers.jsx';
 
-const PAGES = {
+const PAGES_BASE = {
   vragen: { label: '📝 Vragen', component: Vragen },
   nooit: { label: '🍺 Nooit', component: Nooit },
+  sessies: { label: '🎮 Sessies', component: Sessies },
   statistieken: { label: '📊 Statistieken', component: Statistieken },
   instellingen: { label: '⚙️ Instellingen', component: Instellingen },
   configuratie: { label: '🔧 Configuratie', component: Configuratie },
+};
+
+const PAGES_SUPERADMIN = {
+  servers: { label: '🌐 Servers', component: Servers },
 };
 
 export default function Layout({ user, onLogout }) {
@@ -19,6 +26,10 @@ export default function Layout({ user, onLogout }) {
   const [guilds, setGuilds] = useState([]);
   const [activeGuildId, setActiveGuildId] = useState(null);
   const [pageKey, setPageKey] = useState(0);
+
+  const PAGES = user?.isSuperAdmin
+    ? { ...PAGES_BASE, ...PAGES_SUPERADMIN }
+    : PAGES_BASE;
 
   useEffect(() => {
     api.getGuilds().then(({ guilds, activeGuildId }) => {
@@ -46,7 +57,7 @@ export default function Layout({ user, onLogout }) {
     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`
     : `https://cdn.discordapp.com/embed/avatars/0.png`;
 
-  const PageComponent = PAGES[page].component;
+  const PageComponent = (PAGES[page] ?? PAGES_BASE.vragen).component;
 
   return (
     <div className="app">
