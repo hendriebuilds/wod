@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api.js';
 
 export default function Statistieken() {
-  const [stats, setStats] = useState(null);
+  const [data, setData] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
   const toon = (msg, type = 'success') => {
@@ -12,7 +12,7 @@ export default function Statistieken() {
 
   const laad = async () => {
     try {
-      setStats(await api.getStats());
+      setData(await api.getStats());
     } catch {
       toon('Laden mislukt.', 'error');
     }
@@ -21,7 +21,7 @@ export default function Statistieken() {
   useEffect(() => { laad(); }, []);
 
   const reset = async () => {
-    if (!confirm('Alle statistieken en gebruikte vragen resetten?')) return;
+    if (!confirm('Alle actieve sessies beëindigen en statistieken resetten?')) return;
     try {
       await api.resetStats();
       await laad();
@@ -48,13 +48,19 @@ export default function Statistieken() {
     return u > 0 ? `${u}u ${m}m` : `${m}m`;
   };
 
+  // Bereken totalen over alle sessies
+  const totalen = data?.sessies ? {
+    aantalWaarheid: data.sessies.reduce((sum, s) => sum + s.aantalWaarheid, 0),
+    aantalDoen: data.sessies.reduce((sum, s) => sum + s.aantalDoen, 0),
+  } : null;
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">📊 Statistieken</h1>
         <div className="action-row">
           <button className="btn btn-ghost" onClick={reload}>🔄 Vragen herladen</button>
-          <button className="btn btn-danger" onClick={reset}>🗑️ Reset sessie</button>
+          <button className="btn btn-danger" onClick={reset}>🗑️ Reset sessies</button>
         </div>
       </div>
 
@@ -64,55 +70,92 @@ export default function Statistieken() {
         </div>
       )}
 
-      {!stats ? (
+      {!data ? (
         <p className="muted">Laden...</p>
       ) : (
         <>
+          {/* Totaaloverzicht */}
           <div className="stats-grid">
             <div className="stat-card">
-              <div className="stat-value">{duurTekst(stats.sessieStart)}</div>
-              <div className="stat-label">Sessieduur</div>
+              <div className="stat-value">{data.sessies?.length ?? 0}</div>
+              <div className="stat-label">Actieve sessies</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{stats.aantalWaarheid + stats.aantalDoen}</div>
+              <div className="stat-value">{(totalen?.aantalWaarheid ?? 0) + (totalen?.aantalDoen ?? 0)}</div>
               <div className="stat-label">Totaal gespeeld</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value" style={{ color: '#5865f2' }}>{stats.aantalWaarheid}</div>
-              <div className="stat-label">🔵 Waarheid</div>
+              <div className="stat-value" style={{ color: '#5865f2' }}>{totalen?.aantalWaarheid ?? 0}</div>
+              <div className="stat-label">🔵 Waarheid totaal</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value" style={{ color: '#ed4245' }}>{stats.aantalDoen}</div>
-              <div className="stat-label">🔴 Doen</div>
+              <div className="stat-value" style={{ color: '#ed4245' }}>{totalen?.aantalDoen ?? 0}</div>
+              <div className="stat-label">🔴 Doen totaal</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{stats.waarheidTotaal}</div>
-              <div className="stat-label">Waarheidsvragen totaal</div>
+              <div className="stat-value">{data.waarheidTotaal}</div>
+              <div className="stat-label">Waarheidsvragen beschikbaar</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{stats.doenTotaal}</div>
-              <div className="stat-label">Doe-opdrachten totaal</div>
+              <div className="stat-value">{data.doenTotaal}</div>
+              <div className="stat-label">Doe-opdrachten beschikbaar</div>
             </div>
           </div>
 
-          <div className="card">
-            <h2 style={{ marginBottom: '16px', fontSize: '16px' }}>🎲 Reroll ranglijst</h2>
-            {Object.keys(stats.rerollTeller).length === 0 ? (
-              <p className="muted">Nog niemand gererolld.</p>
-            ) : (
-              <div className="question-list">
-                {Object.values(stats.rerollTeller)
-                  .sort((a, b) => b.teller - a.teller)
-                  .map((item, i) => (
-                    <div key={i} className="question-item">
-                      <span className="question-num">#{i + 1}</span>
-                      <span className="question-text">{item.naam}</span>
-                      <span className="muted">{item.teller}× reroll</span>
-                    </div>
-                  ))}
+          {/* Per sessie */}
+          {data.sessies && data.sessies.length === 0 ? (
+            <div className="card">
+              <p className="muted">Geen actieve of gepauzeerde sessies. Start een spel via Discord met <code>/wod</code>.</p>
+            </div>
+          ) : (
+            data.sessies?.map(sessie => (
+              <div key={sessie.id} className="card" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h2 style={{ fontSize: '16px', margin: 0 }}>
+                    {sessie.status === 'actief' ? '🟢' : '🟡'} {sessie.naam}
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--muted, #888)', fontWeight: 400 }}>
+                      ID #{sessie.id} • <code style={{ fontSize: '11px' }}>{sessie.channelId}</code>
+                    </span>
+                  </h2>
+                  <span style={{ fontSize: '12px', color: 'var(--muted, #888)' }}>
+                    Duur: {duurTekst(sessie.sessieStart)}
+                  </span>
+                </div>
+
+                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                  <div className="stat-card" style={{ padding: '10px' }}>
+                    <div className="stat-value" style={{ fontSize: '20px' }}>{sessie.aantalWaarheid + sessie.aantalDoen}</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>Rondes</div>
+                  </div>
+                  <div className="stat-card" style={{ padding: '10px' }}>
+                    <div className="stat-value" style={{ fontSize: '20px', color: '#5865f2' }}>{sessie.aantalWaarheid}</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>Waarheid</div>
+                  </div>
+                  <div className="stat-card" style={{ padding: '10px' }}>
+                    <div className="stat-value" style={{ fontSize: '20px', color: '#ed4245' }}>{sessie.aantalDoen}</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>Doen</div>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>🎲 Reroll ranglijst</h3>
+                {Object.keys(sessie.rerollTeller).length === 0 ? (
+                  <p className="muted" style={{ fontSize: '13px' }}>Nog niemand gererolld.</p>
+                ) : (
+                  <div className="question-list">
+                    {Object.values(sessie.rerollTeller)
+                      .sort((a, b) => b.teller - a.teller)
+                      .map((item, i) => (
+                        <div key={i} className="question-item">
+                          <span className="question-num">#{i + 1}</span>
+                          <span className="question-text">{item.naam}</span>
+                          <span className="muted">{item.teller}× reroll</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            ))
+          )}
         </>
       )}
     </div>

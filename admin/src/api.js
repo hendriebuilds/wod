@@ -48,4 +48,8 @@ export const api = {
   getCategorieen: () => req('GET', '/api/categorieen'),
   createCategorieMappen: () => req('POST', '/api/categoriemappen/aanmaken'),
   resetConfig: () => req('POST', '/api/reset-config'),
+  getSessies: () => req('GET', '/api/sessies'),
+  deleteSessie: (id) => req('DELETE', `/api/sessies/${id}`),
+  getServers: () => req('GET', '/api/servers'),
+  leaveServer: (guildId) => req('DELETE', `/api/servers/${guildId}`),
 };

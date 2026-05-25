@@ -59,6 +59,27 @@ db.exec(`
     tekst TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_nooit_guild ON nooit_stellingen(guild_id);
+  CREATE TABLE IF NOT EXISTS wod_sessies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    naam TEXT NOT NULL DEFAULT 'Sessie',
+    status TEXT NOT NULL DEFAULT 'actief' CHECK(status IN ('actief','gepauzeerd','beeindigd')),
+    aangemaakt_op INTEGER NOT NULL DEFAULT (unixepoch()),
+    sessie_start_iso TEXT NOT NULL DEFAULT (datetime('now')),
+    gebruikte_waarheid TEXT NOT NULL DEFAULT '[]',
+    gebruikte_doen TEXT NOT NULL DEFAULT '[]',
+    aantal_waarheid INTEGER NOT NULL DEFAULT 0,
+    aantal_doen INTEGER NOT NULL DEFAULT 0,
+    reroll_teller TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE TABLE IF NOT EXISTS actieve_sessie (
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    sessie_id INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, channel_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessies_guild ON wod_sessies(guild_id);
 `);
 
 // Schema migraties voor nieuwe kolommen
@@ -72,6 +93,15 @@ db.exec(`
     PRIMARY KEY (guild_id, channel_id)
   );
   CREATE INDEX IF NOT EXISTS idx_channel_cat ON channel_categorie(guild_id, channel_id);
+  CREATE TABLE IF NOT EXISTS bot_servers (
+    guild_id   TEXT PRIMARY KEY,
+    naam       TEXT NOT NULL,
+    icon       TEXT,
+    member_count INTEGER NOT NULL DEFAULT 0,
+    owner_id   TEXT,
+    joined_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+    laatste_update INTEGER NOT NULL DEFAULT (unixepoch())
+  );
 `);
 
 const stmts = {
@@ -106,6 +136,27 @@ const stmts = {
   `),
   deleteChannelCategorie: db.prepare("DELETE FROM channel_categorie WHERE guild_id = ? AND channel_id = ?"),
   getDistinctCats:        db.prepare("SELECT DISTINCT categorie FROM vragen WHERE guild_id = ? ORDER BY categorie"),
+  insertSessie:           db.prepare("INSERT INTO wod_sessies (guild_id, channel_id, naam) VALUES (?, ?, ?)"),
+  getSessieById:          db.prepare("SELECT * FROM wod_sessies WHERE id = ?"),
+  getSessiesGuild:        db.prepare("SELECT * FROM wod_sessies WHERE guild_id = ? ORDER BY aangemaakt_op DESC"),
+  countSessies:           db.prepare("SELECT COUNT(*) AS cnt FROM wod_sessies WHERE guild_id = ?"),
+  updateSessieStatus:     db.prepare("UPDATE wod_sessies SET status = ? WHERE id = ?"),
+  updateSessieNaam:       db.prepare("UPDATE wod_sessies SET naam = ? WHERE id = ?"),
+  updateSessieData:       db.prepare("UPDATE wod_sessies SET gebruikte_waarheid = ?, gebruikte_doen = ?, aantal_waarheid = ?, aantal_doen = ?, reroll_teller = ? WHERE id = ?"),
+  getActieveSessieLink:   db.prepare("SELECT * FROM actieve_sessie WHERE guild_id = ? AND channel_id = ?"),
+  upsertActieveSessieLink: db.prepare("INSERT INTO actieve_sessie (guild_id, channel_id, sessie_id) VALUES (?, ?, ?) ON CONFLICT(guild_id, channel_id) DO UPDATE SET sessie_id = excluded.sessie_id"),
+  deleteActieveSessieLink: db.prepare("DELETE FROM actieve_sessie WHERE guild_id = ? AND channel_id = ?"),
+  upsertBotServer:         db.prepare(`
+    INSERT INTO bot_servers (guild_id, naam, icon, member_count, owner_id, laatste_update)
+    VALUES (?, ?, ?, ?, ?, unixepoch())
+    ON CONFLICT(guild_id) DO UPDATE SET
+      naam = excluded.naam, icon = excluded.icon,
+      member_count = excluded.member_count, owner_id = excluded.owner_id,
+      laatste_update = unixepoch()
+  `),
+  deleteBotServer:         db.prepare("DELETE FROM bot_servers WHERE guild_id = ?"),
+  getAllBotServers:         db.prepare("SELECT * FROM bot_servers ORDER BY naam ASC"),
+  getBotServer:            db.prepare("SELECT * FROM bot_servers WHERE guild_id = ?"),
 };
 
 function getRandomNooit(guildId) {
@@ -132,21 +183,63 @@ function getCategorieFilter(guildId, channelId) {
   return row ? row.categorie : null;
 }
 
-// ─── Per-guild in-memory state ─────────────────────────────────────────────────
+// ─── Sessie-cache systeem ──────────────────────────────────────────────────────
 
-const gebruikteVragen = new Map(); // `${guildId}-${type}` -> Set<id>
-function getGebruikte(guildId, type) {
-  const key = `${guildId}-${type}`;
-  if (!gebruikteVragen.has(key)) gebruikteVragen.set(key, new Set());
-  return gebruikteVragen.get(key);
+const sessieCache = new Map(); // sessieId -> { gebruikteWaarheid: Set, gebruikteDoen: Set, rerollTeller: Map, sessieStart: Date, aantalWaarheid: number, aantalDoen: number }
+
+function laadSessieInCache(sessie) {
+  const cache = {
+    gebruikteWaarheid: new Set(JSON.parse(sessie.gebruikte_waarheid)),
+    gebruikteDoen: new Set(JSON.parse(sessie.gebruikte_doen)),
+    rerollTeller: new Map(Object.entries(JSON.parse(sessie.reroll_teller))),
+    sessieStart: new Date(sessie.sessie_start_iso),
+    aantalWaarheid: sessie.aantal_waarheid,
+    aantalDoen: sessie.aantal_doen,
+  };
+  sessieCache.set(sessie.id, cache);
+  return cache;
 }
 
-const sessieData = new Map(); // guildId -> { sessieStart, aantalWaarheid, aantalDoen, rerollTeller }
-function getSessie(guildId) {
-  if (!sessieData.has(guildId)) {
-    sessieData.set(guildId, { sessieStart: new Date(), aantalWaarheid: 0, aantalDoen: 0, rerollTeller: new Map() });
+function getSessieCache(sessieId) {
+  if (!sessieCache.has(sessieId)) {
+    const sessie = stmts.getSessieById.get(sessieId);
+    if (!sessie) return null;
+    laadSessieInCache(sessie);
   }
-  return sessieData.get(guildId);
+  return sessieCache.get(sessieId);
+}
+
+function saveSessieCache(sessieId) {
+  const cache = sessieCache.get(sessieId);
+  if (!cache) return;
+  stmts.updateSessieData.run(
+    JSON.stringify([...cache.gebruikteWaarheid]),
+    JSON.stringify([...cache.gebruikteDoen]),
+    cache.aantalWaarheid,
+    cache.aantalDoen,
+    JSON.stringify(Object.fromEntries(cache.rerollTeller)),
+    sessieId
+  );
+}
+
+// Haal actieve sessie-ID op voor een kanaal, maak er één aan als die niet bestaat
+function getSessieId(guildId, channelId) {
+  const link = stmts.getActieveSessieLink.get(guildId, channelId);
+  if (link) {
+    const sessie = stmts.getSessieById.get(link.sessie_id);
+    if (sessie && sessie.status === 'actief') {
+      if (!sessieCache.has(sessie.id)) laadSessieInCache(sessie);
+      return sessie.id;
+    }
+  }
+  // Auto-aanmaken
+  const count = stmts.countSessies.get(guildId).cnt;
+  const result = stmts.insertSessie.run(guildId, channelId, `Sessie ${count + 1}`);
+  const sessieId = result.lastInsertRowid;
+  stmts.upsertActieveSessieLink.run(guildId, channelId, sessieId);
+  const sessie = stmts.getSessieById.get(sessieId);
+  laadSessieInCache(sessie);
+  return sessieId;
 }
 
 const beurtenMap = new Map(); // guildId -> { lijst: [{id, naam}], huidig: number }
@@ -157,7 +250,7 @@ function getBeurten(guildId) {
 
 // ─── Vraag helpers ─────────────────────────────────────────────────────────────
 
-function getVraag(guildId, type, categorieFilter = null) {
+function getVraag(guildId, type, categorieFilter = null, sessieId = null) {
   let vragen = categorieFilter
     ? stmts.getVragenByCategorie.all(guildId, type, categorieFilter)
     : stmts.getVragen.all(guildId, type);
@@ -165,15 +258,21 @@ function getVraag(guildId, type, categorieFilter = null) {
     vragen = stmts.getVragen.all(guildId, type); // fallback naar alle categorieën
   }
   if (vragen.length === 0) return null;
-  const gebruikte = getGebruikte(guildId, type);
-  if (gebruikte.size >= vragen.length) {
-    gebruikte.clear();
-    console.log(`🔄 Alle ${type} vragen geweest voor guild ${guildId}, lijst gereset.`);
+
+  let gebruikte;
+  if (sessieId) {
+    const cache = getSessieCache(sessieId);
+    gebruikte = type === 'waarheid' ? cache.gebruikteWaarheid : cache.gebruikteDoen;
+  } else {
+    return vragen[Math.floor(Math.random() * vragen.length)];
   }
+
+  if (gebruikte.size >= vragen.length) gebruikte.clear();
   const beschikbaar = vragen.filter(v => !gebruikte.has(v.id));
   const pool = beschikbaar.length > 0 ? beschikbaar : vragen;
   const vraag = pool[Math.floor(Math.random() * pool.length)];
   gebruikte.add(vraag.id);
+  saveSessieCache(sessieId);
   return vraag;
 }
 
@@ -214,6 +313,29 @@ function slaConfigOp() {
 }
 
 laadConfig();
+
+// ─── Superadmin ────────────────────────────────────────────────────────────────
+
+const SUPERADMIN_IDS = (process.env.SUPERADMIN_IDS || process.env.SUPERADMIN_ID || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+function isSuperAdmin(userId) {
+  return SUPERADMIN_IDS.length > 0 && SUPERADMIN_IDS.includes(userId);
+}
+
+function syncGuildToDb(guild) {
+  try {
+    stmts.upsertBotServer.run(
+      guild.id,
+      guild.name,
+      guild.icon ?? null,
+      guild.memberCount ?? guild.approximateMemberCount ?? 0,
+      guild.ownerId ?? null
+    );
+  } catch (err) {
+    console.error(`❌ syncGuildToDb mislukt voor ${guild.id}:`, err.message);
+  }
+}
 
 // ─── Liefdestaal test ─────────────────────────────────────────────────────────
 
@@ -560,6 +682,21 @@ const commands = [
     .setDescription("Bekijk de statistieken van deze sessie.")
     .toJSON(),
   new SlashCommandBuilder()
+    .setName("sessie")
+    .setDescription("Beheer WoD-spelsessies — meerdere tegelijk mogelijk")
+    .addSubcommand(sub => sub.setName("starten").setDescription("Start een nieuwe sessie in dit kanaal")
+      .addStringOption(opt => opt.setName("naam").setDescription("Naam voor de sessie").setRequired(false)))
+    .addSubcommand(sub => sub.setName("lijst").setDescription("Bekijk alle sessies op deze server"))
+    .addSubcommand(sub => sub.setName("wisselen").setDescription("Activeer een andere sessie in dit kanaal")
+      .addIntegerOption(opt => opt.setName("id").setDescription("Sessie ID (zie /sessie lijst)").setRequired(true)))
+    .addSubcommand(sub => sub.setName("pauzeren").setDescription("Pauzeer de actieve sessie in dit kanaal"))
+    .addSubcommand(sub => sub.setName("hervatten").setDescription("Hervat een gepauzeerde sessie")
+      .addIntegerOption(opt => opt.setName("id").setDescription("Sessie ID (optioneel)").setRequired(false)))
+    .addSubcommand(sub => sub.setName("stoppen").setDescription("Beëindig de actieve sessie definitief"))
+    .addSubcommand(sub => sub.setName("info").setDescription("Toon info over de actieve sessie"))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName("voeg-toe")
     .setDescription("Voeg een nieuwe vraag of opdracht toe. (Alleen voor admins)")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
@@ -661,7 +798,25 @@ client.once("ready", async () => {
     }
   }
 
+  // Sync alle huidige servers naar DB
+  for (const [, guild] of client.guilds.cache) syncGuildToDb(guild);
+  console.log(`✅ ${client.guilds.cache.size} server(s) gesynchroniseerd.`);
+
   migrateFromJSON();
+});
+
+client.on("guildCreate", (guild) => {
+  console.log(`📥 Bot toegevoegd aan: ${guild.name} (${guild.id})`);
+  syncGuildToDb(guild);
+});
+
+client.on("guildDelete", (guild) => {
+  console.log(`📤 Bot verwijderd van: ${guild.name} (${guild.id})`);
+  stmts.deleteBotServer.run(guild.id);
+});
+
+client.on("guildUpdate", (_old, newGuild) => {
+  syncGuildToDb(newGuild);
 });
 
 // ─── Embed Helpers ─────────────────────────────────────────────────────────────
@@ -675,9 +830,9 @@ function buildKiesEmbed(user, doelNaam = null) {
     .setFooter({ text: "Waarheid of Doen • Durf jij het aan?" });
 }
 
-function buildWaarheidEmbed(vraagTekst, user, guildId, isReroll = false) {
+function buildWaarheidEmbed(vraagTekst, user, guildId, isReroll = false, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
-  const gebruiktCount = getGebruikte(guildId, 'waarheid').size;
+  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(isReroll ? "🔵 Waarheid — Reroll" : "🔵 Waarheid")
@@ -686,9 +841,9 @@ function buildWaarheidEmbed(vraagTekst, user, guildId, isReroll = false) {
     .setTimestamp();
 }
 
-function buildDoenEmbed(opdrachtTekst, user, guildId, isReroll = false) {
+function buildDoenEmbed(opdrachtTekst, user, guildId, isReroll = false, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
-  const gebruiktCount = getGebruikte(guildId, 'doen').size;
+  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xed4245)
     .setTitle(isReroll ? "🔴 Doen — Reroll" : "🔴 Doen")
@@ -697,9 +852,9 @@ function buildDoenEmbed(opdrachtTekst, user, guildId, isReroll = false) {
     .setTimestamp();
 }
 
-function buildStrafWaarheidEmbed(vraagTekst, user, guildId) {
+function buildStrafWaarheidEmbed(vraagTekst, user, guildId, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
-  const gebruiktCount = getGebruikte(guildId, 'waarheid').size;
+  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xffa500)
     .setTitle("🔵 Waarheid — Strafvraag")
@@ -708,9 +863,9 @@ function buildStrafWaarheidEmbed(vraagTekst, user, guildId) {
     .setTimestamp();
 }
 
-function buildStrafDoenEmbed(opdrachtTekst, user, guildId) {
+function buildStrafDoenEmbed(opdrachtTekst, user, guildId, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
-  const gebruiktCount = getGebruikte(guildId, 'doen').size;
+  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xffa500)
     .setTitle("🔴 Doen — Strafopdracht")
@@ -743,30 +898,50 @@ function buildActieButtons(type) {
   );
 }
 
-function buildStatistiekenEmbed(guildId) {
-  const stats = getSessie(guildId);
-  const totaal = stats.aantalWaarheid + stats.aantalDoen;
-  const duur = Math.floor((new Date() - stats.sessieStart) / 60000);
+function buildStatistiekenEmbed(guildId, channelId = null) {
+  let cache = null;
+  let sessieNaam = 'Sessie';
+  if (channelId) {
+    const link = stmts.getActieveSessieLink.get(guildId, channelId);
+    if (link) {
+      cache = getSessieCache(link.sessie_id);
+      const sessie = stmts.getSessieById.get(link.sessie_id);
+      if (sessie) sessieNaam = sessie.naam;
+    }
+  }
+  if (!cache) {
+    // Gebruik de eerste actieve sessie of lege stats
+    const actieveSessies = stmts.getSessiesGuild.all(guildId).filter(s => s.status === 'actief');
+    if (actieveSessies.length > 0) {
+      cache = getSessieCache(actieveSessies[0].id);
+      sessieNaam = actieveSessies[0].naam;
+    }
+  }
+  if (!cache) {
+    cache = { aantalWaarheid: 0, aantalDoen: 0, rerollTeller: new Map(), sessieStart: new Date() };
+  }
+  const totaal = cache.aantalWaarheid + cache.aantalDoen;
+  const duur = Math.floor((new Date() - cache.sessieStart) / 60000);
   const uren = Math.floor(duur / 60);
   const minuten = duur % 60;
   const duurTekst = uren > 0 ? `${uren}u ${minuten}m` : `${minuten}m`;
-  const rerollLijst = [...stats.rerollTeller.entries()]
+  const rerollLijst = [...cache.rerollTeller.entries()]
     .sort((a, b) => b[1].teller - a[1].teller)
     .map(([, data], i) => `**${i + 1}.** ${data.naam} — ${data.teller}x reroll`)
     .join("\n");
   return new EmbedBuilder()
     .setColor(0xfee75c)
-    .setTitle("📊 Statistieken")
+    .setTitle(`📊 Statistieken — ${sessieNaam}`)
     .addFields(
       { name: "⏱️ Sessieduur", value: duurTekst, inline: true },
       { name: "🎮 Totaal gespeeld", value: `${totaal} rondes`, inline: true },
       { name: "​", value: "​", inline: true },
-      { name: "🔵 Waarheid", value: `${stats.aantalWaarheid}x`, inline: true },
-      { name: "🔴 Doen", value: `${stats.aantalDoen}x`, inline: true },
+      { name: "🔵 Waarheid", value: `${cache.aantalWaarheid}x`, inline: true },
+      { name: "🔴 Doen", value: `${cache.aantalDoen}x`, inline: true },
       { name: "​", value: "​", inline: true },
       { name: "🎲 Reroll ranglijst", value: rerollLijst || "Nog niemand gererolld!", inline: false }
     )
-    .setFooter({ text: `Sessie gestart om ${stats.sessieStart.toLocaleTimeString("nl-NL")}` })
+    .setFooter({ text: `Sessie gestart om ${cache.sessieStart.toLocaleTimeString("nl-NL")}` })
     .setTimestamp();
 }
 
@@ -831,6 +1006,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "waarheid") {
       const nummer = interaction.options.getInteger("nummer");
+      const sessieId = getSessieId(guildId, interaction.channelId);
       if (nummer !== null) {
         const vragen = stmts.getVragen.all(guildId, 'waarheid');
         if (nummer > vragen.length) {
@@ -838,37 +1014,41 @@ client.on("interactionCreate", async (interaction) => {
           return;
         }
         const vraag = vragen[nummer - 1];
-        getGebruikte(guildId, 'waarheid').add(vraag.id);
-        getSessie(guildId).aantalWaarheid++;
+        const cache = getSessieCache(sessieId);
+        cache.gebruikteWaarheid.add(vraag.id);
+        cache.aantalWaarheid++;
+        saveSessieCache(sessieId);
         const inst = dbGetInstellingen(guildId);
         if (inst.dmModus || vraag.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
             await interaction.reply({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
           } catch {
-            await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+            await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
           }
         } else {
-          await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+          await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
         const catFilter = getCategorieFilter(guildId, interaction.channelId);
-        const vraag = getVraag(guildId, 'waarheid', catFilter);
+        const vraag = getVraag(guildId, 'waarheid', catFilter, sessieId);
         if (!vraag) {
           await interaction.reply({ content: '❌ Er zijn geen waarheidsvragen. Voeg ze toe via het admin panel.', ephemeral: true });
           return;
         }
-        getSessie(guildId).aantalWaarheid++;
+        const cache = getSessieCache(sessieId);
+        cache.aantalWaarheid++;
+        saveSessieCache(sessieId);
         const inst = dbGetInstellingen(guildId);
         if (inst.dmModus || vraag.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
             await interaction.reply({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
           } catch {
-            await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+            await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
           }
         } else {
-          await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+          await interaction.reply({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       }
       return;
@@ -876,6 +1056,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.commandName === "doen") {
       const nummer = interaction.options.getInteger("nummer");
+      const sessieId = getSessieId(guildId, interaction.channelId);
       if (nummer !== null) {
         const opdrachten = stmts.getVragen.all(guildId, 'doen');
         if (nummer > opdrachten.length) {
@@ -883,37 +1064,41 @@ client.on("interactionCreate", async (interaction) => {
           return;
         }
         const opdracht = opdrachten[nummer - 1];
-        getGebruikte(guildId, 'doen').add(opdracht.id);
-        getSessie(guildId).aantalDoen++;
+        const cache = getSessieCache(sessieId);
+        cache.gebruikteDoen.add(opdracht.id);
+        cache.aantalDoen++;
+        saveSessieCache(sessieId);
         const inst = dbGetInstellingen(guildId);
         if (inst.dmModus || opdracht.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
             await interaction.reply({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
           } catch {
-            await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+            await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
           }
         } else {
-          await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+          await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
         }
       } else {
         const catFilter = getCategorieFilter(guildId, interaction.channelId);
-        const opdracht = getVraag(guildId, 'doen', catFilter);
+        const opdracht = getVraag(guildId, 'doen', catFilter, sessieId);
         if (!opdracht) {
           await interaction.reply({ content: '❌ Er zijn geen doe-opdrachten. Voeg ze toe via het admin panel.', ephemeral: true });
           return;
         }
-        getSessie(guildId).aantalDoen++;
+        const cache = getSessieCache(sessieId);
+        cache.aantalDoen++;
+        saveSessieCache(sessieId);
         const inst = dbGetInstellingen(guildId);
         if (inst.dmModus || opdracht.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
             await interaction.reply({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
           } catch {
-            await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+            await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
           }
         } else {
-          await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+          await interaction.reply({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
         }
       }
       return;
@@ -1072,27 +1257,38 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.commandName === "statistieken") {
-      await interaction.reply({ embeds: [buildStatistiekenEmbed(guildId)] });
+      await interaction.reply({ embeds: [buildStatistiekenEmbed(guildId, interaction.channelId)] });
       return;
     }
 
     if (interaction.commandName === "reset") {
-      getGebruikte(guildId, 'waarheid').clear();
-      getGebruikte(guildId, 'doen').clear();
-      sessieData.delete(guildId);
+      const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+      if (link) {
+        saveSessieCache(link.sessie_id);
+        stmts.updateSessieStatus.run('beeindigd', link.sessie_id);
+        stmts.deleteActieveSessieLink.run(guildId, interaction.channelId);
+        sessieCache.delete(link.sessie_id);
+      }
       await interaction.reply({
         embeds: [new EmbedBuilder()
           .setColor(0x57f287)
           .setTitle("✅ Reset voltooid")
-          .setDescription("Alle gebruikte vragen en statistieken zijn gereset. Veel speelplezier! 🎉")
+          .setDescription("Sessie beëindigd. Gebruik `/wod` of `/sessie starten` om een nieuwe sessie te beginnen. 🎉")
           .setTimestamp()],
       });
       return;
     }
 
     if (interaction.commandName === "reload") {
-      getGebruikte(guildId, 'waarheid').clear();
-      getGebruikte(guildId, 'doen').clear();
+      const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+      if (link) {
+        const cache = getSessieCache(link.sessie_id);
+        if (cache) {
+          cache.gebruikteWaarheid.clear();
+          cache.gebruikteDoen.clear();
+          saveSessieCache(link.sessie_id);
+        }
+      }
       const waarheidCount = stmts.countVragen.get(guildId, 'waarheid').cnt;
       const doenCount = stmts.countVragen.get(guildId, 'doen').cnt;
       await interaction.reply({
@@ -1104,6 +1300,162 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
       return;
+    }
+
+    if (interaction.commandName === "sessie") {
+      const sub = interaction.options.getSubcommand();
+
+      if (sub === "starten") {
+        const naam = interaction.options.getString("naam");
+        const count = stmts.countSessies.get(guildId).cnt;
+        const sessieNaam = naam?.trim() || `Sessie ${count + 1}`;
+        const result = stmts.insertSessie.run(guildId, interaction.channelId, sessieNaam);
+        const sessieId = result.lastInsertRowid;
+        stmts.upsertActieveSessieLink.run(guildId, interaction.channelId, sessieId);
+        laadSessieInCache(stmts.getSessieById.get(sessieId));
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0x57f287).setTitle("🎮 Nieuwe sessie gestart")
+            .setDescription(`Sessie **${sessieNaam}** (ID: \`${sessieId}\`) is actief in dit kanaal.\nGebruik \`/wod\` om te beginnen!`).setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "lijst") {
+        const sessies = stmts.getSessiesGuild.all(guildId);
+        if (sessies.length === 0) {
+          await interaction.reply({ content: "Geen sessies gevonden. Gebruik `/wod` of `/sessie starten` om een sessie te beginnen.", ephemeral: true });
+          return;
+        }
+        const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+        const lines = sessies.map(s => {
+          const emoji = s.status === 'actief' ? '🟢' : s.status === 'gepauzeerd' ? '🟡' : '🔴';
+          const actief = (link && link.sessie_id === s.id) ? ' ◀ **actief**' : '';
+          return `${emoji} \`#${s.id}\` **${s.naam}** — ${s.aantal_waarheid + s.aantal_doen} rondes (<#${s.channel_id}>)${actief}`;
+        });
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle("📋 Sessie-overzicht").setDescription(lines.join('\n')).setTimestamp()],
+          ephemeral: true,
+        });
+        return;
+      }
+
+      if (sub === "wisselen") {
+        const id = interaction.options.getInteger("id");
+        const sessie = stmts.getSessieById.get(id);
+        if (!sessie || sessie.guild_id !== guildId) {
+          await interaction.reply({ content: `❌ Sessie #${id} niet gevonden op deze server.`, ephemeral: true });
+          return;
+        }
+        if (sessie.status === 'beeindigd') {
+          await interaction.reply({ content: `❌ Sessie #${id} is al definitief beëindigd.`, ephemeral: true });
+          return;
+        }
+        if (sessie.status === 'gepauzeerd') stmts.updateSessieStatus.run('actief', id);
+        stmts.upsertActieveSessieLink.run(guildId, interaction.channelId, id);
+        if (!sessieCache.has(id)) laadSessieInCache(stmts.getSessieById.get(id));
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0x57f287).setTitle("🔄 Sessie gewisseld")
+            .setDescription(`Kanaal <#${interaction.channelId}> gebruikt nu sessie **${sessie.naam}** (ID: \`${id}\`).`)
+            .addFields(
+              { name: "🔵 Waarheid", value: `${sessie.aantal_waarheid}`, inline: true },
+              { name: "🔴 Doen", value: `${sessie.aantal_doen}`, inline: true },
+              { name: "🎮 Totaal", value: `${sessie.aantal_waarheid + sessie.aantal_doen}`, inline: true },
+            ).setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "pauzeren") {
+        const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+        if (!link) {
+          await interaction.reply({ content: "❌ Geen actieve sessie in dit kanaal.", ephemeral: true });
+          return;
+        }
+        saveSessieCache(link.sessie_id);
+        stmts.updateSessieStatus.run('gepauzeerd', link.sessie_id);
+        stmts.deleteActieveSessieLink.run(guildId, interaction.channelId);
+        const sessie = stmts.getSessieById.get(link.sessie_id);
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle("⏸️ Sessie gepauzeerd")
+            .setDescription(`Sessie **${sessie.naam}** (ID: \`${link.sessie_id}\`) is gepauzeerd.\nGebruik \`/sessie hervatten ${link.sessie_id}\` om verder te gaan.`).setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "hervatten") {
+        const id = interaction.options.getInteger("id");
+        if (id) {
+          const sessie = stmts.getSessieById.get(id);
+          if (!sessie || sessie.guild_id !== guildId || sessie.status !== 'gepauzeerd') {
+            await interaction.reply({ content: `❌ Geen gepauzeerde sessie met ID \`${id}\` gevonden.`, ephemeral: true });
+            return;
+          }
+          stmts.updateSessieStatus.run('actief', id);
+          stmts.upsertActieveSessieLink.run(guildId, interaction.channelId, id);
+          if (!sessieCache.has(id)) laadSessieInCache(sessie);
+          await interaction.reply({
+            embeds: [new EmbedBuilder().setColor(0x57f287).setTitle("▶️ Sessie hervat")
+              .setDescription(`Sessie **${sessie.naam}** (ID: \`${id}\`) is hervat in dit kanaal.`).setTimestamp()],
+          });
+        } else {
+          const gepauzeerd = stmts.getSessiesGuild.all(guildId).filter(s => s.status === 'gepauzeerd');
+          if (gepauzeerd.length === 0) {
+            await interaction.reply({ content: "Geen gepauzeerde sessies om te hervatten.", ephemeral: true });
+            return;
+          }
+          const lines = gepauzeerd.map(s => `🟡 \`#${s.id}\` **${s.naam}** — ${s.aantal_waarheid + s.aantal_doen} rondes`);
+          await interaction.reply({
+            embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle("⏸️ Gepauzeerde sessies")
+              .setDescription(lines.join('\n') + '\n\nGebruik `/sessie hervatten [id]` om te hervatten.').setTimestamp()],
+            ephemeral: true,
+          });
+        }
+        return;
+      }
+
+      if (sub === "stoppen") {
+        const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+        if (!link) {
+          await interaction.reply({ content: "❌ Geen actieve sessie in dit kanaal.", ephemeral: true });
+          return;
+        }
+        saveSessieCache(link.sessie_id);
+        stmts.updateSessieStatus.run('beeindigd', link.sessie_id);
+        stmts.deleteActieveSessieLink.run(guildId, interaction.channelId);
+        sessieCache.delete(link.sessie_id);
+        const sessie = stmts.getSessieById.get(link.sessie_id);
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0xed4245).setTitle("⏹️ Sessie beëindigd")
+            .setDescription(`Sessie **${sessie.naam}** is definitief beëindigd.\n**${sessie.aantal_waarheid + sessie.aantal_doen}** rondes gespeeld.`).setTimestamp()],
+        });
+        return;
+      }
+
+      if (sub === "info") {
+        const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
+        if (!link) {
+          await interaction.reply({ content: "❌ Geen actieve sessie in dit kanaal. Gebruik `/wod` of `/sessie starten` om te beginnen.", ephemeral: true });
+          return;
+        }
+        const sessie = stmts.getSessieById.get(link.sessie_id);
+        const cache = getSessieCache(link.sessie_id);
+        const duur = Math.floor((new Date() - cache.sessieStart) / 60000);
+        const uren = Math.floor(duur / 60);
+        const minuten = duur % 60;
+        await interaction.reply({
+          embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(`📊 ${sessie.naam}`)
+            .addFields(
+              { name: "🆔 Sessie ID", value: `${sessie.id}`, inline: true },
+              { name: "📺 Kanaal", value: `<#${sessie.channel_id}>`, inline: true },
+              { name: "⏱️ Duur", value: uren > 0 ? `${uren}u ${minuten}m` : `${minuten}m`, inline: true },
+              { name: "🎮 Totaal", value: `${cache.aantalWaarheid + cache.aantalDoen}`, inline: true },
+              { name: "🔵 Waarheid", value: `${cache.aantalWaarheid}`, inline: true },
+              { name: "🔴 Doen", value: `${cache.aantalDoen}`, inline: true },
+            ).setTimestamp()],
+          ephemeral: true,
+        });
+        return;
+      }
     }
 
     if (interaction.commandName === "voeg-toe") {
@@ -1169,160 +1521,179 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.customId === "kies_waarheid") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
+      const sessieId = getSessieId(guildId, interaction.channelId);
       const catFilter = getCategorieFilter(guildId, interaction.channelId);
-      const vraag = getVraag(guildId, 'waarheid', catFilter);
+      const vraag = getVraag(guildId, 'waarheid', catFilter, sessieId);
       if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-      getSessie(guildId).aantalWaarheid++;
+      const cache = getSessieCache(sessieId);
+      cache.aantalWaarheid++;
+      saveSessieCache(sessieId);
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || vraag.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)] });
+          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
           await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
         } catch {
-          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
       }
       return;
     }
 
     if (interaction.customId === "kies_doen") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
+      const sessieId = getSessieId(guildId, interaction.channelId);
       const catFilter = getCategorieFilter(guildId, interaction.channelId);
-      const opdracht = getVraag(guildId, 'doen', catFilter);
+      const opdracht = getVraag(guildId, 'doen', catFilter, sessieId);
       if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-      getSessie(guildId).aantalDoen++;
+      const cache = getSessieCache(sessieId);
+      cache.aantalDoen++;
+      saveSessieCache(sessieId);
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || opdracht.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)] });
+          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
           await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
         } catch {
-          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
       }
       return;
     }
 
     if (interaction.customId === "kies_random") {
       await interaction.update({ components: [buildDisabledKiesButtons()] });
+      const sessieId = getSessieId(guildId, interaction.channelId);
       const catFilter = getCategorieFilter(guildId, interaction.channelId);
       const inst = dbGetInstellingen(guildId);
       if (Math.random() < 0.5) {
-        const vraag = getVraag(guildId, 'waarheid', catFilter);
+        const vraag = getVraag(guildId, 'waarheid', catFilter, sessieId);
         if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-        getSessie(guildId).aantalWaarheid++;
+        const cache = getSessieCache(sessieId);
+        cache.aantalWaarheid++;
+        saveSessieCache(sessieId);
         if (inst.dmModus || vraag.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
             await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
           } catch {
-            await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+            await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
           }
         } else {
-          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        const opdracht = getVraag(guildId, 'doen', catFilter);
+        const opdracht = getVraag(guildId, 'doen', catFilter, sessieId);
         if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-        getSessie(guildId).aantalDoen++;
+        const cache = getSessieCache(sessieId);
+        cache.aantalDoen++;
+        saveSessieCache(sessieId);
         if (inst.dmModus || opdracht.dm_modus) {
           try {
-            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)] });
+            await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
             await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
           } catch {
-            await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+            await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
           }
         } else {
-          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [buildActieButtons("doen")] });
         }
       }
       return;
     }
 
     if (interaction.customId === "reroll_waarheid") {
-      const stats = getSessie(guildId);
-      const huidig = stats.rerollTeller.get(user.id ?? interaction.user.id) ?? { naam: user.displayName, teller: 0 };
-      stats.rerollTeller.set(user.id ?? interaction.user.id, { naam: user.displayName, teller: huidig.teller + 1 });
+      const sessieId = getSessieId(guildId, interaction.channelId);
+      const cache = getSessieCache(sessieId);
+      const userId = user.id ?? interaction.user.id;
+      const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
+      cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
       const catFilter = getCategorieFilter(guildId, interaction.channelId);
-      const vraag = getVraag(guildId, 'waarheid', catFilter);
+      const vraag = getVraag(guildId, 'waarheid', catFilter, sessieId);
       if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
+      saveSessieCache(sessieId);
       await interaction.deferUpdate();
       await interaction.message.delete();
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || vraag.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true)] });
+          await interaction.user.send({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)] });
           await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
         } catch {
-          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true)], components: [buildActieButtons("waarheid")] });
+          await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true)], components: [buildActieButtons("waarheid")] });
+        await interaction.followUp({ embeds: [buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)], components: [buildActieButtons("waarheid")] });
       }
       return;
     }
 
     if (interaction.customId === "reroll_doen") {
-      const stats = getSessie(guildId);
-      const huidig = stats.rerollTeller.get(user.id ?? interaction.user.id) ?? { naam: user.displayName, teller: 0 };
-      stats.rerollTeller.set(user.id ?? interaction.user.id, { naam: user.displayName, teller: huidig.teller + 1 });
+      const sessieId = getSessieId(guildId, interaction.channelId);
+      const cache = getSessieCache(sessieId);
+      const userId = user.id ?? interaction.user.id;
+      const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
+      cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
       const catFilter = getCategorieFilter(guildId, interaction.channelId);
-      const opdracht = getVraag(guildId, 'doen', catFilter);
+      const opdracht = getVraag(guildId, 'doen', catFilter, sessieId);
       if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
+      saveSessieCache(sessieId);
       await interaction.deferUpdate();
       await interaction.message.delete();
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || opdracht.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true)] });
+          await interaction.user.send({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)] });
           await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
         } catch {
-          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true)], components: [buildActieButtons("doen")] });
+          await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)], components: [buildActieButtons("doen")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true)], components: [buildActieButtons("doen")] });
+        await interaction.followUp({ embeds: [buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)], components: [buildActieButtons("doen")] });
       }
       return;
     }
 
     if (interaction.customId === "passen_waarheid") {
-      const vraag = getVraag(guildId, 'waarheid', getCategorieFilter(guildId, interaction.channelId));
+      const sessieId = getSessieId(guildId, interaction.channelId);
+      const vraag = getVraag(guildId, 'waarheid', getCategorieFilter(guildId, interaction.channelId), sessieId);
       if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || vraag.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId)] });
+          await interaction.user.send({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)] });
           await interaction.followUp({ content: `📩 Strafvraag verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("waarheid")] });
         } catch {
-          await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+          await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)], components: [buildActieButtons("waarheid")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId)], components: [buildActieButtons("waarheid")] });
+        await interaction.followUp({ embeds: [buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)], components: [buildActieButtons("waarheid")] });
       }
       return;
     }
 
     if (interaction.customId === "passen_doen") {
-      const opdracht = getVraag(guildId, 'doen', getCategorieFilter(guildId, interaction.channelId));
+      const sessieId = getSessieId(guildId, interaction.channelId);
+      const opdracht = getVraag(guildId, 'doen', getCategorieFilter(guildId, interaction.channelId), sessieId);
       if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
       await interaction.deferUpdate();
       await interaction.message.delete();
       const inst = dbGetInstellingen(guildId);
       if (inst.dmModus || opdracht.dm_modus) {
         try {
-          await interaction.user.send({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId)] });
+          await interaction.user.send({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)] });
           await interaction.followUp({ content: `📩 Strafopdracht verstuurd via DM aan **${user.displayName}**!`, components: [buildActieButtons("doen")] });
         } catch {
-          await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+          await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)], components: [buildActieButtons("doen")] });
         }
       } else {
-        await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId)], components: [buildActieButtons("doen")] });
+        await interaction.followUp({ embeds: [buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)], components: [buildActieButtons("doen")] });
       }
       return;
     }
@@ -1463,7 +1834,15 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
       stmts.deleteVraagById.run(vraagId, guildId);
-      getGebruikte(guildId, vraag.type).delete(vraagId);
+      // Verwijder vraag-id uit alle sessie-caches van de guild
+      const guildSessies = stmts.getSessiesGuild.all(guildId);
+      for (const s of guildSessies) {
+        const cache = sessieCache.get(s.id);
+        if (cache) {
+          if (vraag.type === 'waarheid') cache.gebruikteWaarheid.delete(vraagId);
+          else cache.gebruikteDoen.delete(vraagId);
+        }
+      }
       await interaction.update({
         embeds: [new EmbedBuilder()
           .setColor(0x57f287)
@@ -1548,13 +1927,27 @@ app.get("/auth/callback", async (req, res) => {
     const guildsData = await guildsRes.json();
 
     const botGuildIds = new Set(client.guilds.cache.keys());
-    const adminGuilds = guildsData
-      .filter(g => botGuildIds.has(g.id) && (BigInt(g.permissions) & 0x20n) !== 0n)
-      .map(g => ({ id: g.id, name: g.name, icon: g.icon }));
+    let adminGuilds;
+
+    if (isSuperAdmin(userData.id)) {
+      // Superadmin ziet ALLE servers waar de bot aanwezig is
+      adminGuilds = [...client.guilds.cache.values()].map(g => ({
+        id: g.id, name: g.name, icon: g.icon ?? null,
+      })).sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      adminGuilds = guildsData
+        .filter(g => botGuildIds.has(g.id) && (BigInt(g.permissions) & 0x20n) !== 0n)
+        .map(g => ({ id: g.id, name: g.name, icon: g.icon }));
+    }
 
     if (adminGuilds.length === 0) return res.redirect(`${config.frontendUrl}?error=geen_toegang`);
 
-    req.session.user = { id: userData.id, username: userData.username, avatar: userData.avatar };
+    req.session.user = {
+      id: userData.id,
+      username: userData.username,
+      avatar: userData.avatar,
+      isSuperAdmin: isSuperAdmin(userData.id),
+    };
     req.session.guilds = adminGuilds;
     req.session.activeGuildId = adminGuilds[0].id;
     res.redirect(config.frontendUrl);
@@ -1566,7 +1959,10 @@ app.get("/auth/callback", async (req, res) => {
 
 app.get("/auth/me", (req, res) => {
   if (!req.session.user) return res.status(401).json({ error: "Niet ingelogd" });
-  res.json(req.session.user);
+  res.json({
+    ...req.session.user,
+    isSuperAdmin: isSuperAdmin(req.session.user.id),
+  });
 });
 
 app.post("/auth/logout", (req, res) => {
@@ -1577,14 +1973,6 @@ app.post("/auth/logout", (req, res) => {
 
 app.get("/api/guilds", requireAuth, (req, res) => {
   res.json({ guilds: req.session.guilds || [], activeGuildId: req.session.activeGuildId || null });
-});
-
-app.post("/api/guild", requireAuth, (req, res) => {
-  const { guildId } = req.body;
-  const guilds = req.session.guilds || [];
-  if (!guilds.find(g => g.id === guildId)) return res.status(403).json({ error: "Geen toegang tot deze server." });
-  req.session.activeGuildId = guildId;
-  res.json({ ok: true });
 });
 
 // ── Vragen API ──
@@ -1622,10 +2010,19 @@ app.delete("/api/vragen/:id", requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Ongeldige invoer." });
+  const vraag = db.prepare("SELECT * FROM vragen WHERE id = ? AND guild_id = ?").get(id, guildId);
+  if (!vraag) return res.status(404).json({ error: "Vraag niet gevonden." });
   const result = stmts.deleteVraagById.run(id, guildId);
   if (result.changes === 0) return res.status(404).json({ error: "Vraag niet gevonden." });
-  getGebruikte(guildId, 'waarheid').delete(id);
-  getGebruikte(guildId, 'doen').delete(id);
+  // Verwijder vraag-id uit alle sessie-caches van de guild
+  const guildSessies = stmts.getSessiesGuild.all(guildId);
+  for (const s of guildSessies) {
+    const cache = sessieCache.get(s.id);
+    if (cache) {
+      if (vraag.type === 'waarheid') cache.gebruikteWaarheid.delete(id);
+      else cache.gebruikteDoen.delete(id);
+    }
+  }
   res.json({ ok: true });
 });
 
@@ -1700,31 +2097,71 @@ app.post("/api/vragen/import", requireAuth, requireGuild, express.text({ type: '
 
 app.get("/api/statistieken", requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
-  const stats = getSessie(guildId);
+  const sessies = stmts.getSessiesGuild.all(guildId).filter(s => s.status !== 'beeindigd');
   const waarheidTotaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
   const doenTotaal = stmts.countVragen.get(guildId, 'doen').cnt;
-  res.json({
-    sessieStart: stats.sessieStart,
-    aantalWaarheid: stats.aantalWaarheid,
-    aantalDoen: stats.aantalDoen,
-    rerollTeller: Object.fromEntries(stats.rerollTeller),
-    waarheidTotaal,
-    doenTotaal,
+  const sessieStats = sessies.map(s => {
+    const cache = sessieCache.get(s.id);
+    return {
+      id: s.id,
+      naam: s.naam,
+      status: s.status,
+      channelId: s.channel_id,
+      sessieStart: s.sessie_start_iso,
+      aantalWaarheid: cache ? cache.aantalWaarheid : s.aantal_waarheid,
+      aantalDoen: cache ? cache.aantalDoen : s.aantal_doen,
+      rerollTeller: cache ? Object.fromEntries(cache.rerollTeller) : JSON.parse(s.reroll_teller),
+    };
   });
+  res.json({ sessies: sessieStats, waarheidTotaal, doenTotaal });
 });
 
 app.post("/api/reset", requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
-  getGebruikte(guildId, 'waarheid').clear();
-  getGebruikte(guildId, 'doen').clear();
-  sessieData.delete(guildId);
+  const sessies = stmts.getSessiesGuild.all(guildId).filter(s => s.status === 'actief');
+  for (const s of sessies) {
+    saveSessieCache(s.id);
+    stmts.updateSessieStatus.run('beeindigd', s.id);
+    sessieCache.delete(s.id);
+  }
+  db.prepare("DELETE FROM actieve_sessie WHERE guild_id = ?").run(guildId);
   res.json({ ok: true });
 });
 
 app.post("/api/reload", requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
-  getGebruikte(guildId, 'waarheid').clear();
-  getGebruikte(guildId, 'doen').clear();
+  const sessies = stmts.getSessiesGuild.all(guildId).filter(s => s.status === 'actief');
+  for (const s of sessies) {
+    const cache = getSessieCache(s.id);
+    if (cache) { cache.gebruikteWaarheid.clear(); cache.gebruikteDoen.clear(); saveSessieCache(s.id); }
+  }
+  res.json({ ok: true });
+});
+
+// ── Sessies API ──
+
+app.get("/api/sessies", requireAuth, requireGuild, (req, res) => {
+  const sessies = stmts.getSessiesGuild.all(req.session.activeGuildId);
+  res.json(sessies.map(s => {
+    const cache = sessieCache.get(s.id);
+    return {
+      ...s,
+      aantalWaarheid: cache ? cache.aantalWaarheid : s.aantal_waarheid,
+      aantalDoen: cache ? cache.aantalDoen : s.aantal_doen,
+    };
+  }));
+});
+
+app.delete("/api/sessies/:id", requireAuth, requireGuild, (req, res) => {
+  const guildId = req.session.activeGuildId;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Ongeldig ID." });
+  const sessie = stmts.getSessieById.get(id);
+  if (!sessie || sessie.guild_id !== guildId) return res.status(404).json({ error: "Niet gevonden." });
+  saveSessieCache(id);
+  stmts.updateSessieStatus.run('beeindigd', id);
+  db.prepare("DELETE FROM actieve_sessie WHERE guild_id = ? AND sessie_id = ?").run(guildId, id);
+  sessieCache.delete(id);
   res.json({ ok: true });
 });
 
@@ -1860,6 +2297,59 @@ app.post("/api/reset-config", requireAuth, requireGuild, (req, res) => {
 app.get("/api/categorieen", requireAuth, requireGuild, (req, res) => {
   const cats = stmts.getDistinctCats.all(req.session.activeGuildId).map(r => r.categorie);
   res.json(cats);
+});
+
+// ── Superadmin middleware ──
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.session.user) return res.status(401).json({ error: "Niet ingelogd" });
+  if (!isSuperAdmin(req.session.user.id)) return res.status(403).json({ error: "Geen superadmin-rechten." });
+  next();
+}
+
+// ── Servers API (superadmin) ──
+
+app.get("/api/servers", requireAuth, requireSuperAdmin, (req, res) => {
+  const servers = stmts.getAllBotServers.all().map(s => {
+    const guild = client.guilds.cache.get(s.guild_id);
+    return {
+      ...s,
+      online: !!guild,
+      member_count: guild?.memberCount ?? s.member_count,
+      vragen_waarheid: stmts.countVragen.get(s.guild_id, 'waarheid').cnt,
+      vragen_doen:     stmts.countVragen.get(s.guild_id, 'doen').cnt,
+      sessies_actief:  stmts.getSessiesGuild.all(s.guild_id).filter(x => x.status === 'actief').length,
+    };
+  });
+  res.json(servers);
+});
+
+app.delete("/api/servers/:guildId", requireAuth, requireSuperAdmin, async (req, res) => {
+  const { guildId } = req.params;
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return res.status(404).json({ error: "Server niet gevonden of bot is er al weg." });
+  try {
+    await guild.leave();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Verlaten mislukt: " + err.message });
+  }
+});
+
+// Superadmin kan naar elke server wisselen (geen guild-eigenaarschapscheck)
+app.post("/api/guild", requireAuth, (req, res) => {
+  const { guildId } = req.body;
+  const guilds = req.session.guilds || [];
+  if (!isSuperAdmin(req.session.user.id) && !guilds.find(g => g.id === guildId)) {
+    return res.status(403).json({ error: "Geen toegang tot deze server." });
+  }
+  // Zorg dat de guild bestaat in de sessie voor superadmin
+  if (isSuperAdmin(req.session.user.id) && !guilds.find(g => g.id === guildId)) {
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) req.session.guilds = [...guilds, { id: guild.id, name: guild.name, icon: guild.icon ?? null }];
+  }
+  req.session.activeGuildId = guildId;
+  res.json({ ok: true });
 });
 
 // ── Configuratie API ──
