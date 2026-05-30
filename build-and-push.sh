@@ -1,13 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-IMAGE="hendrie0575/wod-bot:latest"
+IMAGE="ghcr.io/hen3games/wod"
+VERSION=$(node -p "require('./package.json').version")
 
-echo "Building $IMAGE..."
-docker build -t "$IMAGE" .
+echo "Bouwen: $IMAGE:$VERSION"
+docker build -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
 
-echo "Pushing $IMAGE..."
-docker push "$IMAGE"
+echo "Pushen naar GHCR..."
+docker push "$IMAGE:$VERSION"
+docker push "$IMAGE:latest"
 
-echo "Done! Pull the new image on Unraid with:"
-echo "  docker pull $IMAGE"
+echo "Klaar — $IMAGE:$VERSION en :latest gepusht"
