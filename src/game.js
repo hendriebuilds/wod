@@ -233,3 +233,50 @@ export const RELATIE_SCORES = [
   { min: 3, tekst: '🤔 Tegengestelden trekken aan. Jullie hebben genoeg om over te praten.' },
   { min: 0, tekst: '😅 Compleet tegengesteld — of juist perfect voor elkaar?' },
 ];
+
+// ─── Levels definitie ──────────────────────────────────────────────────────────
+
+export const LEVELS = [
+  { level: 1, naam: 'Lafaard',             min: 0 },
+  { level: 2, naam: 'Durfal',              min: 50 },
+  { level: 3, naam: 'Onthullingsmaster',   min: 150 },
+  { level: 4, naam: 'Legenda',             min: 300 },
+];
+
+export function berekenLevel(punten) {
+  let current = LEVELS[0];
+  for (const l of LEVELS) {
+    if (punten >= l.min) current = l;
+  }
+  return current;
+}
+
+// ─── Punten & achievements ─────────────────────────────────────────────────────
+
+export function voegPuntenToe(guildId, userId, userNaam, punten) {
+  const huidig = stmts.getUserLevel.get(guildId, userId);
+  const huidigPunten = (huidig?.punten ?? 0) + punten;
+  const nieuwLevel = berekenLevel(Math.max(0, huidigPunten));
+  stmts.upsertUserLevel.run(guildId, userId, userNaam, punten, nieuwLevel.level);
+  checkAchievements(guildId, userId);
+}
+
+export function checkAchievements(guildId, userId) {
+  const row = stmts.getUserLevel.get(guildId, userId);
+  if (!row) return;
+  const behaald = new Set(stmts.getUserAchievements.all(guildId, userId).map(a => a.achievement));
+
+  const grant = (naam) => {
+    if (!behaald.has(naam)) {
+      stmts.insertAchievement.run(guildId, userId, naam);
+      behaald.add(naam);
+    }
+  };
+
+  if (row.punten !== null) grant('Eerste stap');
+  if ((row.reroll_teller ?? 0) >= 10) grant('Reroll addict');
+  if ((row.passen_teller ?? 0) >= 5) grant('Lafaard');
+  if (row.level >= 2) grant('Durfal');
+  if ((row.rondes_teller ?? 0) >= 3) grant('Op dreef');
+  if (row.level >= 4) grant('Legenda');
+}
