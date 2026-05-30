@@ -8,6 +8,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction, { game, embeds }) {
+  const user = interaction.member ?? interaction.user;
   const doelLid = interaction.options.getMember('speler');
   let doelNaam = null;
   if (doelLid) {
@@ -15,5 +16,6 @@ export async function execute(interaction, { game, embeds }) {
   } else {
     doelNaam = game.getHuidigeSpelerNaam(interaction.guildId);
   }
-  await interaction.reply({ embeds: [embeds.buildKiesEmbed(interaction.member ?? interaction.user, doelNaam)], components: [embeds.buildKiesButtons()] });
+  game.voegPuntenToe(interaction.guildId, interaction.user.id, user.displayName, 5);
+  await interaction.reply({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
 }

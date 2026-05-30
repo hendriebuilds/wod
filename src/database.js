@@ -57,6 +57,9 @@ db.exec(`
 
 try { db.exec('ALTER TABLE instellingen ADD COLUMN auto_categorie_mappen INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE instellingen ADD COLUMN categorie_per_chat INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE user_levels ADD COLUMN reroll_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE user_levels ADD COLUMN passen_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE user_levels ADD COLUMN rondes_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS channel_categorie (
@@ -66,6 +69,21 @@ db.exec(`
     PRIMARY KEY (guild_id, channel_id)
   );
   CREATE INDEX IF NOT EXISTS idx_channel_cat ON channel_categorie(guild_id, channel_id);
+  CREATE TABLE IF NOT EXISTS user_levels (
+    guild_id  TEXT NOT NULL,
+    user_id   TEXT NOT NULL,
+    user_naam TEXT NOT NULL,
+    punten    INTEGER NOT NULL DEFAULT 0,
+    level     INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (guild_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS user_achievements (
+    guild_id    TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    achievement TEXT NOT NULL,
+    behaald_op  INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (guild_id, user_id, achievement)
+  );
   CREATE TABLE IF NOT EXISTS bot_servers (
     guild_id   TEXT PRIMARY KEY,
     naam       TEXT NOT NULL,
@@ -130,6 +148,21 @@ export const stmts = {
   deleteBotServer:  db.prepare('DELETE FROM bot_servers WHERE guild_id = ?'),
   getAllBotServers:  db.prepare('SELECT * FROM bot_servers ORDER BY naam ASC'),
   getBotServer:     db.prepare('SELECT * FROM bot_servers WHERE guild_id = ?'),
+  upsertUserLevel:  db.prepare(`
+    INSERT INTO user_levels (guild_id, user_id, user_naam, punten, level, reroll_teller, passen_teller, rondes_teller)
+    VALUES (?, ?, ?, ?, ?, 0, 0, 0)
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+      user_naam = excluded.user_naam,
+      punten = punten + excluded.punten,
+      level = excluded.level
+  `),
+  incrReroll:           db.prepare('UPDATE user_levels SET reroll_teller = reroll_teller + 1 WHERE guild_id = ? AND user_id = ?'),
+  incrPassen:           db.prepare('UPDATE user_levels SET passen_teller = passen_teller + 1 WHERE guild_id = ? AND user_id = ?'),
+  incrRondes:           db.prepare('UPDATE user_levels SET rondes_teller = rondes_teller + 1 WHERE guild_id = ? AND user_id = ?'),
+  getUserLevel:         db.prepare('SELECT * FROM user_levels WHERE guild_id = ? AND user_id = ?'),
+  getRanglijst:         db.prepare('SELECT * FROM user_levels WHERE guild_id = ? ORDER BY punten DESC LIMIT 10'),
+  insertAchievement:    db.prepare('INSERT OR IGNORE INTO user_achievements (guild_id, user_id, achievement) VALUES (?, ?, ?)'),
+  getUserAchievements:  db.prepare('SELECT * FROM user_achievements WHERE guild_id = ? AND user_id = ? ORDER BY behaald_op ASC'),
 };
 
 export function dbGetInstellingen(guildId) {
