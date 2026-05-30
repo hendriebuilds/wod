@@ -258,18 +258,20 @@ export function voegPuntenToe(guildId, userId, userNaam, punten) {
   const huidigPunten = (huidig?.punten ?? 0) + punten;
   const nieuwLevel = berekenLevel(Math.max(0, huidigPunten));
   stmts.upsertUserLevel.run(guildId, userId, userNaam, punten, nieuwLevel.level);
-  checkAchievements(guildId, userId);
+  return checkAchievements(guildId, userId);
 }
 
 export function checkAchievements(guildId, userId) {
   const row = stmts.getUserLevel.get(guildId, userId);
-  if (!row) return;
+  if (!row) return [];
   const behaald = new Set(stmts.getUserAchievements.all(guildId, userId).map(a => a.achievement));
+  const nieuw = [];
 
   const grant = (naam) => {
     if (!behaald.has(naam)) {
       stmts.insertAchievement.run(guildId, userId, naam);
       behaald.add(naam);
+      nieuw.push(naam);
     }
   };
 
@@ -279,4 +281,6 @@ export function checkAchievements(guildId, userId) {
   if (row.level >= 2) grant('Durfal');
   if ((row.rondes_teller ?? 0) >= 3) grant('Op dreef');
   if (row.level >= 4) grant('Legenda');
+
+  return nieuw;
 }

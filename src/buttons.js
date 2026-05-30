@@ -1,5 +1,18 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
+const ACHIEVEMENT_EMOJIS = {
+  'Eerste stap': '👣', 'Durfal': '💪', 'Onthullingsmaster': '🔓',
+  'Legenda': '👑', 'Reroll addict': '🎲', 'Lafaard': '😅',
+  'Op dreef': '🔥', 'Lovebird': '💑', 'Zelfinzicht': '🧠',
+};
+
+async function notifyAchievements(interaction, achievements) {
+  for (const naam of achievements) {
+    const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
+    await interaction.followUp({ content: `${emoji} **Achievement behaald:** ${naam}!`, ephemeral: true });
+  }
+}
+
 export async function handleButton(interaction, { client, db, stmts, game, embeds }) {
   const guildId = interaction.guildId;
   const user = interaction.member ?? interaction.user;
@@ -103,7 +116,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const userId = user.id ?? interaction.user.id;
     const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
     cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
+    const achRerollW = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
     stmts.incrReroll.run(guildId, interaction.user.id);
     const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
     const vraag = game.getVraag(guildId, 'waarheid', catFilter, sessieId);
@@ -122,6 +135,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     } else {
       await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
     }
+    await notifyAchievements(interaction, achRerollW);
     return;
   }
 
@@ -131,7 +145,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const userId = user.id ?? interaction.user.id;
     const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
     cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
+    const achRerollD = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
     stmts.incrReroll.run(guildId, interaction.user.id);
     const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
     const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
@@ -150,6 +164,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     } else {
       await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('doen')] });
     }
+    await notifyAchievements(interaction, achRerollD);
     return;
   }
 
@@ -159,7 +174,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const sessieId = game.getSessieId(guildId, interaction.channelId);
     const vraag = game.getVraag(guildId, 'waarheid', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
     if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-    game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
+    const achPassenW = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
     stmts.incrPassen.run(guildId, interaction.user.id);
     await interaction.deferUpdate();
     await interaction.message.delete();
@@ -174,6 +189,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     } else {
       await interaction.followUp({ embeds: [embeds.buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
     }
+    await notifyAchievements(interaction, achPassenW);
     return;
   }
 
@@ -181,7 +197,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const sessieId = game.getSessieId(guildId, interaction.channelId);
     const opdracht = game.getVraag(guildId, 'doen', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
     if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-    game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
+    const achPassenD = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
     stmts.incrPassen.run(guildId, interaction.user.id);
     await interaction.deferUpdate();
     await interaction.message.delete();
@@ -196,6 +212,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     } else {
       await interaction.followUp({ embeds: [embeds.buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('doen')] });
     }
+    await notifyAchievements(interaction, achPassenD);
     return;
   }
 
@@ -232,7 +249,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       if (sessie.wel.has(userId)) { sessie.wel.delete(userId); }
       else {
         if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          const achNooit = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size + 1, sessie.nooit.size)] });
+          sessie.wel.set(userId, naam); sessie.nooit.delete(userId);
+          await notifyAchievements(interaction, achNooit);
+          return;
         }
         sessie.wel.set(userId, naam); sessie.nooit.delete(userId);
       }
@@ -240,7 +261,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       if (sessie.nooit.has(userId)) { sessie.nooit.delete(userId); }
       else {
         if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          const achNooit = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size, sessie.nooit.size + 1)] });
+          sessie.nooit.set(userId, naam); sessie.wel.delete(userId);
+          await notifyAchievements(interaction, achNooit);
+          return;
         }
         sessie.nooit.set(userId, naam); sessie.wel.delete(userId);
       }
@@ -260,10 +285,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     if (sessie.vraagIndex >= game.PERSOONLIJKHEID_VRAGEN.length) {
       clearTimeout(sessie.timeout);
       game.persoonlijkheidSessies.delete(userId);
-      stmts.insertAchievement.run(guildId, interaction.user.id, 'Zelfinzicht');
+      const rZelfinzicht1 = stmts.insertAchievement.run(guildId, interaction.user.id, 'Zelfinzicht');
       await interaction.update({ content: '✅ Test voltooid! Je resultaat wordt zo geplaatst...', embeds: [], components: [] });
       const kanaal = client.channels.cache.get(sessie.channelId);
       if (kanaal) await kanaal.send({ embeds: [embeds.buildPersoonlijkheidResultaatEmbed(user, sessie.antwoorden)] });
+      if (rZelfinzicht1.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', ephemeral: true });
     } else {
       await interaction.update({ embeds: [embeds.buildPersoonlijkheidVraagEmbed(sessie.vraagIndex)], components: [embeds.buildPersoonlijkheidButtons()] });
     }
@@ -300,12 +326,24 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
         game.relatieSpelers.delete(sessie.speler1.id);
         game.relatieSpelers.delete(sessie.speler2.id);
         game.relatieSessies.delete(sessionId);
-        game.voegPuntenToe(guildId, sessie.speler1.id, sessie.speler1.naam, 15);
-        game.voegPuntenToe(guildId, sessie.speler2.id, sessie.speler2.naam, 15);
-        stmts.insertAchievement.run(guildId, sessie.speler1.id, 'Lovebird');
-        stmts.insertAchievement.run(guildId, sessie.speler2.id, 'Lovebird');
+        const achRelatie1 = game.voegPuntenToe(guildId, sessie.speler1.id, sessie.speler1.naam, 15);
+        const achRelatie2 = game.voegPuntenToe(guildId, sessie.speler2.id, sessie.speler2.naam, 15);
+        const rLove1 = stmts.insertAchievement.run(guildId, sessie.speler1.id, 'Lovebird');
+        const rLove2 = stmts.insertAchievement.run(guildId, sessie.speler2.id, 'Lovebird');
+        if (rLove1.changes > 0) achRelatie1.push('Lovebird');
+        if (rLove2.changes > 0) achRelatie2.push('Lovebird');
         const kanaal = client.channels.cache.get(sessie.channelId);
-        if (kanaal) await kanaal.send({ embeds: [embeds.buildRelatieResultaatEmbed(sessie)] });
+        if (kanaal) {
+          await kanaal.send({ embeds: [embeds.buildRelatieResultaatEmbed(sessie)] });
+          for (const naam of achRelatie1) {
+            const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
+            await kanaal.send({ content: `${emoji} **Achievement behaald voor ${sessie.speler1.naam}:** ${naam}!` });
+          }
+          for (const naam of achRelatie2) {
+            const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
+            await kanaal.send({ content: `${emoji} **Achievement behaald voor ${sessie.speler2.naam}:** ${naam}!` });
+          }
+        }
       }
     } else {
       await interaction.update({ embeds: [embeds.buildRelatieVraagEmbed(speler.antwoorden.length, speler.naam)], components: [embeds.buildRelatieButtons(sessionId)] });
@@ -327,10 +365,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     if (sessie.vraagIndex >= game.LIEFDESTAAL_VRAGEN.length) {
       clearTimeout(sessie.timeout);
       game.liefdestaalSessies.delete(userId);
-      stmts.insertAchievement.run(guildId, interaction.user.id, 'Zelfinzicht');
+      const rZelfinzicht2 = stmts.insertAchievement.run(guildId, interaction.user.id, 'Zelfinzicht');
       await interaction.update({ content: '✅ Test voltooid! Je uitslag wordt zo geplaatst...', embeds: [], components: [] });
       const kanaal = client.channels.cache.get(sessie.channelId);
       if (kanaal) await kanaal.send({ embeds: [embeds.buildLiefdestaalResultaatEmbed(user, sessie.antwoorden)] });
+      if (rZelfinzicht2.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', ephemeral: true });
     } else {
       await interaction.update({ embeds: [embeds.buildLiefdestaalVraagEmbed(sessie.vraagIndex)], components: [embeds.buildLiefdestaalButtons()] });
     }
@@ -345,10 +384,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     if (b.lijst.length > 0) {
       doelNaam = game.advanceerBeurt(guildId).naam;
     }
-    game.voegPuntenToe(guildId, interaction.user.id, user.displayName, 10);
+    const achRonde = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, 10);
     stmts.incrRondes.run(guildId, interaction.user.id);
     await interaction.update({ components: [] });
     await interaction.followUp({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
+    await notifyAchievements(interaction, achRonde);
     return;
   }
 
