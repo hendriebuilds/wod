@@ -70,11 +70,14 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_channel_cat ON channel_categorie(guild_id, channel_id);
   CREATE TABLE IF NOT EXISTS user_levels (
-    guild_id  TEXT NOT NULL,
-    user_id   TEXT NOT NULL,
-    user_naam TEXT NOT NULL,
-    punten    INTEGER NOT NULL DEFAULT 0,
-    level     INTEGER NOT NULL DEFAULT 1,
+    guild_id      TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    user_naam     TEXT NOT NULL,
+    punten        INTEGER NOT NULL DEFAULT 0,
+    level         INTEGER NOT NULL DEFAULT 1,
+    reroll_teller INTEGER NOT NULL DEFAULT 0,
+    passen_teller INTEGER NOT NULL DEFAULT 0,
+    rondes_teller INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (guild_id, user_id)
   );
   CREATE TABLE IF NOT EXISTS user_achievements (
