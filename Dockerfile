@@ -14,6 +14,7 @@ COPY package.json .
 RUN npm install --omit=dev
 COPY index.js .
 COPY config.json .
+COPY src/ ./src/
 COPY --from=admin-builder /admin/dist ./admin/dist
 EXPOSE 3001
 CMD ["node", "index.js"]
