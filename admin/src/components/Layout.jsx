@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api.js';
 import Vragen from '../pages/Vragen.jsx';
 import Statistieken from '../pages/Statistieken.jsx';
+import Ranglijst from '../pages/Ranglijst.jsx';
 import Instellingen from '../pages/Instellingen.jsx';
 import Configuratie from '../pages/Configuratie.jsx';
 import Nooit from '../pages/Nooit.jsx';
@@ -13,6 +14,7 @@ const PAGES_BASE = {
   nooit: { label: '🍺 Nooit', component: Nooit },
   sessies: { label: '🎮 Sessies', component: Sessies },
   statistieken: { label: '📊 Statistieken', component: Statistieken },
+  ranglijst: { label: '🏆 Ranglijst', component: Ranglijst },
   instellingen: { label: '⚙️ Instellingen', component: Instellingen },
   configuratie: { label: '🔧 Configuratie', component: Configuratie },
 };

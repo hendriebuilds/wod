@@ -242,6 +242,13 @@ app.post('/api/vragen/import', requireAuth, requireGuild, express.text({ type: '
   }
 });
 
+// ── Ranglijst API ──
+
+app.get('/api/ranglijst', requireAuth, requireGuild, (req, res) => {
+  const rows = stmts.getRanglijst.all(req.session.activeGuildId);
+  res.json(rows);
+});
+
 // ── Statistieken API ──
 
 app.get('/api/statistieken', requireAuth, requireGuild, (req, res) => {

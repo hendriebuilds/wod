@@ -50,6 +50,7 @@ export const api = {
   resetConfig: () => req('POST', '/api/reset-config'),
   getSessies: () => req('GET', '/api/sessies'),
   deleteSessie: (id) => req('DELETE', `/api/sessies/${id}`),
+  getRanglijst: () => req('GET', '/api/ranglijst'),
   getServers: () => req('GET', '/api/servers'),
   leaveServer: (guildId) => req('DELETE', `/api/servers/${guildId}`),
 };

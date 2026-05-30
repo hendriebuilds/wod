@@ -160,7 +160,15 @@ export const stmts = {
   incrPassen:           db.prepare('UPDATE user_levels SET passen_teller = passen_teller + 1 WHERE guild_id = ? AND user_id = ?'),
   incrRondes:           db.prepare('UPDATE user_levels SET rondes_teller = rondes_teller + 1 WHERE guild_id = ? AND user_id = ?'),
   getUserLevel:         db.prepare('SELECT * FROM user_levels WHERE guild_id = ? AND user_id = ?'),
-  getRanglijst:         db.prepare('SELECT * FROM user_levels WHERE guild_id = ? ORDER BY punten DESC LIMIT 10'),
+  getRanglijst:         db.prepare(`
+    SELECT ul.*, COUNT(ua.achievement) AS achievement_count
+    FROM user_levels ul
+    LEFT JOIN user_achievements ua ON ul.guild_id = ua.guild_id AND ul.user_id = ua.user_id
+    WHERE ul.guild_id = ?
+    GROUP BY ul.guild_id, ul.user_id
+    ORDER BY ul.punten DESC
+    LIMIT 10
+  `),
   insertAchievement:    db.prepare('INSERT OR IGNORE INTO user_achievements (guild_id, user_id, achievement) VALUES (?, ?, ?)'),
   getUserAchievements:  db.prepare('SELECT * FROM user_achievements WHERE guild_id = ? AND user_id = ? ORDER BY behaald_op ASC'),
 };
