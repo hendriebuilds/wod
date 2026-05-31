@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 
 function Feedback({ feedback }) {
   if (!feedback) return null;
@@ -11,6 +12,7 @@ function Feedback({ feedback }) {
 }
 
 export default function Nooit() {
+  const { t } = useLanguage();
   const [stellingen, setStelling] = useState([]);
   const [nieuwTekst, setNieuwTekst] = useState('');
   const [editId, setEditId] = useState(null);
@@ -27,11 +29,11 @@ export default function Nooit() {
     try {
       setStelling(await api.getNooit());
     } catch {
-      toon('Laden mislukt.', 'error');
+      toon(t('nooit.ladenMislukt'), 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { laad(); }, [laad]);
 
@@ -42,9 +44,9 @@ export default function Nooit() {
       await api.addNooit(nieuwTekst.trim());
       setNieuwTekst('');
       await laad();
-      toon('Stelling toegevoegd!');
+      toon(t('nooit.toegevoegd'));
     } catch {
-      toon('Toevoegen mislukt.', 'error');
+      toon(t('nooit.toevoegenMislukt'), 'error');
     }
   };
 
@@ -54,27 +56,27 @@ export default function Nooit() {
       await api.updateNooit(id, editTekst.trim());
       setEditId(null);
       await laad();
-      toon('Stelling bijgewerkt!');
+      toon(t('nooit.bijgewerkt'));
     } catch {
-      toon('Opslaan mislukt.', 'error');
+      toon(t('nooit.opslaanMislukt'), 'error');
     }
   };
 
   const verwijder = async (id) => {
-    if (!confirm('Weet je zeker dat je deze stelling wilt verwijderen?')) return;
+    if (!confirm(t('nooit.verwijderConfirm'))) return;
     try {
       await api.deleteNooit(id);
       await laad();
-      toon('Stelling verwijderd.');
+      toon(t('nooit.verwijderd'));
     } catch {
-      toon('Verwijderen mislukt.', 'error');
+      toon(t('nooit.verwijderenMislukt'), 'error');
     }
   };
 
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">🍺 Nooit heb ik... stellingen</h1>
+        <h1 className="page-title">{t('nooit.title')}</h1>
       </div>
 
       <Feedback feedback={feedback} />
@@ -82,17 +84,17 @@ export default function Nooit() {
       <form className="add-form" onSubmit={toevoegen}>
         <input
           className="form-input"
-          placeholder="Nieuwe stelling (zonder 'Nooit heb ik...')..."
+          placeholder={t('nooit.placeholder')}
           value={nieuwTekst}
           onChange={e => setNieuwTekst(e.target.value)}
         />
-        <button type="submit" className="btn btn-primary">Toevoegen</button>
+        <button type="submit" className="btn btn-primary">{t('nooit.toevoegen')}</button>
       </form>
 
       {loading ? (
-        <p className="muted">Laden...</p>
+        <p className="muted">{t('laden')}</p>
       ) : stellingen.length === 0 ? (
-        <p className="muted">Geen stellingen. Voeg er een toe!</p>
+        <p className="muted">{t('nooit.geenStellingen')}</p>
       ) : (
         <div className="question-list">
           {stellingen.map((item, i) => (

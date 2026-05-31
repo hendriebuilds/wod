@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
-
-const LEVEL_NAMEN = ['', 'Lafaard', 'Durfal', 'Onthullingsmaster', 'Legenda'];
+import { useLanguage } from '../LanguageContext.jsx';
 
 export default function Ranglijst() {
+  const { t, strings } = useLanguage();
+  const levelNamen = strings['ranglijst.levelNamen'];
   const [data, setData] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
@@ -15,13 +16,13 @@ export default function Ranglijst() {
   useEffect(() => {
     api.getRanglijst()
       .then(setData)
-      .catch(() => toon('Laden mislukt.', 'error'));
+      .catch(() => toon(t('ranglijst.ladenMislukt'), 'error'));
   }, []);
 
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">🏆 Ranglijst</h1>
+        <h1 className="page-title">{t('ranglijst.title')}</h1>
       </div>
 
       {feedback && (
@@ -31,21 +32,21 @@ export default function Ranglijst() {
       )}
 
       {!data ? (
-        <p className="muted">Laden...</p>
+        <p className="muted">{t('laden')}</p>
       ) : data.length === 0 ? (
         <div className="card">
-          <p className="muted">Nog niemand heeft punten verdiend. Start een spel via Discord met <code>/wod</code>.</p>
+          <p className="muted">{t('ranglijst.geenData')}</p>
         </div>
       ) : (
         <div className="card">
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border, #2e3035)', textAlign: 'left' }}>
-                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>#</th>
-                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>Speler</th>
-                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>Punten</th>
-                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>Level</th>
-                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>Achievements</th>
+                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>{t('ranglijst.colRank')}</th>
+                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>{t('ranglijst.colSpeler')}</th>
+                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>{t('ranglijst.colPunten')}</th>
+                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>{t('ranglijst.colLevel')}</th>
+                <th style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--muted, #888)' }}>{t('ranglijst.colAchievements')}</th>
               </tr>
             </thead>
             <tbody>
@@ -57,7 +58,7 @@ export default function Ranglijst() {
                   <td style={{ padding: '10px 12px', fontWeight: 500 }}>{row.user_naam}</td>
                   <td style={{ padding: '10px 12px' }}>{row.punten}</td>
                   <td style={{ padding: '10px 12px', fontSize: '13px' }}>
-                    <span style={{ opacity: 0.7 }}>Lv.{row.level}</span> {LEVEL_NAMEN[row.level] ?? ''}
+                    <span style={{ opacity: 0.7 }}>Lv.{row.level}</span> {levelNamen[row.level] ?? ''}
                   </td>
                   <td style={{ padding: '10px 12px', fontSize: '13px', color: 'var(--muted, #888)' }}>
                     {row.achievement_count ?? 0}

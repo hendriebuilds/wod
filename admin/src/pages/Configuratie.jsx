@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 
 export default function Configuratie() {
+  const { t } = useLanguage();
   const [values, setValues] = useState({ redirectUri: '', frontendUrl: '' });
   const [feedback, setFeedback] = useState(null);
 
@@ -19,17 +21,17 @@ export default function Configuratie() {
     try {
       const updated = await api.updateConfig(values);
       setValues(updated);
-      toon('Configuratie opgeslagen! Log opnieuw in om wijzigingen te activeren.');
+      toon(t('configuratie.opgeslagen'));
     } catch {
-      toon('Opslaan mislukt.', 'error');
+      toon(t('configuratie.opslaanMislukt'), 'error');
     }
   };
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: '8px' }}>🔧 Configuratie</h1>
+      <h1 className="page-title" style={{ marginBottom: '8px' }}>{t('configuratie.title')}</h1>
       <p className="muted" style={{ marginBottom: '24px' }}>
-        Instellingen voor het admin panel. De bot token en client credentials blijven in <code>.env</code>.
+        {t('configuratie.subtitle')}
       </p>
 
       {feedback && (
@@ -41,7 +43,7 @@ export default function Configuratie() {
       <div className="card">
         <form onSubmit={opslaan}>
           <div className="form-group">
-            <label className="form-label">OAuth Redirect URI</label>
+            <label className="form-label">{t('configuratie.redirectUri')}</label>
             <input
               type="url"
               className="form-input"
@@ -49,13 +51,11 @@ export default function Configuratie() {
               onChange={e => setValues(v => ({ ...v, redirectUri: e.target.value }))}
               placeholder="http://jouwserver:3001/auth/callback"
             />
-            <p className="form-hint">
-              Moet exact overeenkomen met wat je in de Discord Developer Portal hebt ingesteld.
-            </p>
+            <p className="form-hint">{t('configuratie.redirectHint')}</p>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Frontend URL</label>
+            <label className="form-label">{t('configuratie.frontendUrl')}</label>
             <input
               type="url"
               className="form-input"
@@ -63,21 +63,19 @@ export default function Configuratie() {
               onChange={e => setValues(v => ({ ...v, frontendUrl: e.target.value }))}
               placeholder="http://jouwserver:3001"
             />
-            <p className="form-hint">
-              Het adres waarop het admin panel bereikbaar is. Discord stuurt hiernaar terug na inloggen.
-            </p>
+            <p className="form-hint">{t('configuratie.frontendHint')}</p>
           </div>
 
-          <button type="submit" className="btn btn-primary">💾 Opslaan</button>
+          <button type="submit" className="btn btn-primary">{t('configuratie.opslaan')}</button>
         </form>
       </div>
 
       <div className="card" style={{ borderLeft: '3px solid var(--blurple)' }}>
-        <h3 style={{ marginBottom: '12px', fontSize: '14px' }}>ℹ️ Meerdere servers</h3>
+        <h3 style={{ marginBottom: '12px', fontSize: '14px' }}>{t('configuratie.meerServersTitle')}</h3>
         <p className="muted" style={{ lineHeight: '1.6' }}>
-          De bot werkt automatisch op alle servers waar hij is uitgenodigd. Iedereen met
-          <strong> Manage Server</strong>-rechten op zo'n server kan inloggen op het admin panel.
-          Vragen zijn op dit moment gedeeld tussen alle servers.
+          {t('configuratie.meerServersText1')}
+          <strong> {t('configuratie.meerServersManage')}</strong>
+          {t('configuratie.meerServersText2')}
         </p>
       </div>
     </div>

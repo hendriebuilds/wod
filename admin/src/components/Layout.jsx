@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 import Vragen from '../pages/Vragen.jsx';
 import Statistieken from '../pages/Statistieken.jsx';
 import Ranglijst from '../pages/Ranglijst.jsx';
@@ -9,29 +10,26 @@ import Nooit from '../pages/Nooit.jsx';
 import Sessies from '../pages/Sessies.jsx';
 import Servers from '../pages/Servers.jsx';
 
-const PAGES_BASE = {
-  vragen: { label: '📝 Vragen', component: Vragen },
-  nooit: { label: '🍺 Nooit', component: Nooit },
-  sessies: { label: '🎮 Sessies', component: Sessies },
-  statistieken: { label: '📊 Statistieken', component: Statistieken },
-  ranglijst: { label: '🏆 Ranglijst', component: Ranglijst },
-  instellingen: { label: '⚙️ Instellingen', component: Instellingen },
-  configuratie: { label: '🔧 Configuratie', component: Configuratie },
-};
-
-const PAGES_SUPERADMIN = {
-  servers: { label: '🌐 Servers', component: Servers },
+const PAGE_COMPONENTS = {
+  vragen: Vragen,
+  nooit: Nooit,
+  sessies: Sessies,
+  statistieken: Statistieken,
+  ranglijst: Ranglijst,
+  instellingen: Instellingen,
+  configuratie: Configuratie,
+  servers: Servers,
 };
 
 export default function Layout({ user, onLogout }) {
+  const { t, toggle } = useLanguage();
   const [page, setPage] = useState('vragen');
   const [guilds, setGuilds] = useState([]);
   const [activeGuildId, setActiveGuildId] = useState(null);
   const [pageKey, setPageKey] = useState(0);
 
-  const PAGES = user?.isSuperAdmin
-    ? { ...PAGES_BASE, ...PAGES_SUPERADMIN }
-    : PAGES_BASE;
+  const BASE_PAGES = ['vragen', 'nooit', 'sessies', 'statistieken', 'ranglijst', 'instellingen', 'configuratie'];
+  const pages = user?.isSuperAdmin ? [...BASE_PAGES, 'servers'] : BASE_PAGES;
 
   useEffect(() => {
     api.getGuilds().then(({ guilds, activeGuildId }) => {
@@ -59,7 +57,7 @@ export default function Layout({ user, onLogout }) {
     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`
     : `https://cdn.discordapp.com/embed/avatars/0.png`;
 
-  const PageComponent = (PAGES[page] ?? PAGES_BASE.vragen).component;
+  const PageComponent = PAGE_COMPONENTS[page] ?? Vragen;
 
   return (
     <div className="app">
@@ -86,13 +84,13 @@ export default function Layout({ user, onLogout }) {
         )}
 
         <nav>
-          {Object.entries(PAGES).map(([key, { label }]) => (
+          {pages.map((key) => (
             <button
               key={key}
               className={page === key ? 'active' : ''}
               onClick={() => setPage(key)}
             >
-              {label}
+              {t(`nav.${key}`)}
             </button>
           ))}
         </nav>
@@ -101,7 +99,10 @@ export default function Layout({ user, onLogout }) {
             <img src={avatarUrl} alt="" />
             <span>{user.username}</span>
           </div>
-          <button onClick={handleLogout} className="btn-logout">Uitloggen</button>
+          <button onClick={toggle} className="btn-lang">
+            {t('nav.taalSwitch')}
+          </button>
+          <button onClick={handleLogout} className="btn-logout">{t('nav.uitloggen')}</button>
         </div>
       </aside>
       <main className="main">
