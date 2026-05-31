@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 
 export default function Instellingen() {
+  const { t } = useLanguage();
   const [values, setValues] = useState({
     cooldownMs: 1500,
     dmModus: false,
@@ -43,9 +45,9 @@ export default function Instellingen() {
     try {
       const updated = await api.updateInstellingen(values);
       setValues(updated);
-      setFeedback({ type: 'success', msg: 'Instellingen opgeslagen!' });
+      setFeedback({ type: 'success', msg: t('instellingen.opgeslagen') });
     } catch {
-      setFeedback({ type: 'error', msg: 'Opslaan mislukt.' });
+      setFeedback({ type: 'error', msg: t('instellingen.opslaanMislukt') });
     }
     setTimeout(() => setFeedback(null), 3000);
   };
@@ -54,12 +56,12 @@ export default function Instellingen() {
     setAanmaakBezig(true);
     try {
       const result = await api.createCategorieMappen();
-      setFeedback({ type: 'success', msg: `✅ ${result.aangemaakt.length} kanaal/kanalen aangemaakt!` });
+      setFeedback({ type: 'success', msg: t('instellingen.aanmaakSuccess', { count: result.aangemaakt.length }) });
       await laadChannelData();
       const updated = await api.getInstellingen();
       setValues(updated);
     } catch (err) {
-      setFeedback({ type: 'error', msg: 'Aanmaken mislukt: ' + (err.message || 'onbekende fout') });
+      setFeedback({ type: 'error', msg: t('instellingen.aanmaakMislukt', { error: err.message || t('onbekendeFout') }) });
     }
     setAanmaakBezig(false);
     setTimeout(() => setFeedback(null), 5000);
@@ -72,7 +74,7 @@ export default function Instellingen() {
       await laadChannelData();
       setNieuwMapping(v => ({ ...v, channelId: '' }));
     } catch {
-      setFeedback({ type: 'error', msg: 'Mapping toevoegen mislukt.' });
+      setFeedback({ type: 'error', msg: t('instellingen.mappingMislukt') });
       setTimeout(() => setFeedback(null), 3000);
     }
   };
@@ -82,7 +84,7 @@ export default function Instellingen() {
       await api.deleteChannelCategorie(channelId);
       setMappings(m => m.filter(x => x.channel_id !== channelId));
     } catch {
-      setFeedback({ type: 'error', msg: 'Verwijderen mislukt.' });
+      setFeedback({ type: 'error', msg: t('instellingen.verwijderenMislukt') });
       setTimeout(() => setFeedback(null), 3000);
     }
   };
@@ -95,9 +97,9 @@ export default function Instellingen() {
       setValues(updated);
       await laadChannelData();
       setBevestigReset(false);
-      setFeedback({ type: 'success', msg: 'Configuratie gereset naar standaardwaarden.' });
+      setFeedback({ type: 'success', msg: t('instellingen.resetSuccess') });
     } catch {
-      setFeedback({ type: 'error', msg: 'Reset mislukt.' });
+      setFeedback({ type: 'error', msg: t('instellingen.resetMislukt') });
     }
     setResetBezig(false);
     setTimeout(() => setFeedback(null), 4000);
@@ -112,7 +114,7 @@ export default function Instellingen() {
 
   return (
     <div>
-      <h1 className="page-title" style={{ marginBottom: '24px' }}>⚙️ Instellingen</h1>
+      <h1 className="page-title" style={{ marginBottom: '24px' }}>{t('instellingen.title')}</h1>
 
       {feedback && (
         <div className={feedback.type === 'error' ? 'feedback-error' : 'feedback-success'}>
@@ -120,11 +122,10 @@ export default function Instellingen() {
         </div>
       )}
 
-      {/* Algemene instellingen */}
       <div className="card">
         <form onSubmit={opslaan}>
           <div className="form-group">
-            <label className="form-label">Cooldown (milliseconden)</label>
+            <label className="form-label">{t('instellingen.cooldown')}</label>
             <input
               type="number"
               className="form-input"
@@ -136,12 +137,12 @@ export default function Instellingen() {
               style={{ maxWidth: '200px' }}
             />
             <p className="form-hint">
-              Wachttijd tussen knopklikken per gebruiker. Huidig: {(values.cooldownMs / 1000).toFixed(1)}s
+              {t('instellingen.cooldownHint', { time: (values.cooldownMs / 1000).toFixed(1) })}
             </p>
           </div>
 
           <div className="form-group">
-            <label className="form-label">DM-modus</label>
+            <label className="form-label">{t('instellingen.dmModus')}</label>
             <label className="toggle">
               <input
                 type="checkbox"
@@ -150,13 +151,11 @@ export default function Instellingen() {
               />
               <span className="toggle-track"><span className="toggle-thumb" /></span>
             </label>
-            <p className="form-hint">
-              Stuur vragen privé via DM in plaats van in het kanaal.
-            </p>
+            <p className="form-hint">{t('instellingen.dmHint')}</p>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Automatische Categoriemap Creëren</label>
+            <label className="form-label">{t('instellingen.autoCategorie')}</label>
             <label className="toggle">
               <input
                 type="checkbox"
@@ -165,13 +164,11 @@ export default function Instellingen() {
               />
               <span className="toggle-track"><span className="toggle-thumb" /></span>
             </label>
-            <p className="form-hint">
-              Schakel automatische Discord-kanaalcategorie aanmaak in. Gebruik de knop hieronder om kanalen daadwerkelijk aan te maken.
-            </p>
+            <p className="form-hint">{t('instellingen.autoCategorieHint')}</p>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Categorieën per chat</label>
+            <label className="form-label">{t('instellingen.categoriePerChat')}</label>
             <label className="toggle">
               <input
                 type="checkbox"
@@ -180,44 +177,40 @@ export default function Instellingen() {
               />
               <span className="toggle-track"><span className="toggle-thumb" /></span>
             </label>
-            <p className="form-hint">
-              Wanneer ingeschakeld worden vragen gefilterd op de categorie gekoppeld aan het Discord-kanaal. Zonder koppeling worden alle vragen getoond.
-            </p>
+            <p className="form-hint">{t('instellingen.categoriePerChatHint')}</p>
           </div>
 
-          <button type="submit" className="btn btn-primary">💾 Opslaan</button>
+          <button type="submit" className="btn btn-primary">{t('instellingen.opslaan')}</button>
         </form>
       </div>
 
-      {/* Categoriemappen aanmaken */}
       <div className="card" style={{ marginTop: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>📁 Categoriemappen aanmaken</h2>
+        <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>{t('instellingen.categorieMappenTitle')}</h2>
         <p className="form-hint" style={{ marginBottom: '12px' }}>
-          Maakt automatisch een Discord-kanaalcategorie "🎮 Waarheid of Doen" aan met een tekstkanaal per vraagcategorie. De kanalen worden direct gekoppeld.
+          {t('instellingen.categorieMappenHint')}
         </p>
         <button
           className="btn btn-primary"
           onClick={maakCategorieMappen}
           disabled={aanmaakBezig}
         >
-          {aanmaakBezig ? '⏳ Bezig...' : '🗂️ Maak categoriemappen aan'}
+          {aanmaakBezig ? t('instellingen.bezig') : t('instellingen.maakMappen')}
         </button>
       </div>
 
-      {/* Channel-categorie mapping */}
       {values.categoriePerChat && (
         <div className="card" style={{ marginTop: '24px' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>🔗 Kanaal-categorie koppeling</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>{t('instellingen.koppelTitle')}</h2>
           <p className="form-hint" style={{ marginBottom: '16px' }}>
-            Koppel Discord-kanalen aan vraagcategorieën. In een gekoppeld kanaal worden alleen vragen uit die categorie getoond.
+            {t('instellingen.koppelHint')}
           </p>
 
           {mappings.length > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '14px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>Kanaal</th>
-                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>Categorie</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('instellingen.colKanaal')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('instellingen.colCategorie')}</th>
                   <th style={{ padding: '6px 8px' }}></th>
                 </tr>
               </thead>
@@ -243,7 +236,7 @@ export default function Instellingen() {
                 onChange={e => setNieuwMapping(v => ({ ...v, channelId: e.target.value }))}
                 style={{ flex: '1', minWidth: '160px' }}
               >
-                <option value="">— Kies kanaal —</option>
+                <option value="">{t('instellingen.kiesKanaal')}</option>
                 {ongemapteKanalen.map(k => (
                   <option key={k.id} value={k.id}>#{k.name}{k.parentName ? ` (${k.parentName})` : ''}</option>
                 ))}
@@ -257,34 +250,33 @@ export default function Instellingen() {
                 {categorieen.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <button className="btn btn-primary" onClick={voegMappingToe} disabled={!nieuwMapping.channelId}>
-                ➕ Koppelen
+                {t('instellingen.koppelen')}
               </button>
             </div>
           ) : (
             categorieen.length === 0
-              ? <p className="form-hint">Geen vraagcategorieën gevonden. Voeg eerst vragen toe.</p>
-              : <p className="form-hint">Alle kanalen zijn al gekoppeld.</p>
+              ? <p className="form-hint">{t('instellingen.geenCategorieen')}</p>
+              : <p className="form-hint">{t('instellingen.alleGekoppeld')}</p>
           )}
         </div>
       )}
 
-      {/* Reset configuratie */}
       <div className="card" style={{ marginTop: '24px', borderColor: 'var(--danger, #ed4245)' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>🔄 Configuratie resetten</h2>
+        <h2 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>{t('instellingen.resetTitle')}</h2>
         <p className="form-hint" style={{ marginBottom: '12px' }}>
-          Zet alle instellingen terug naar standaardwaarden en verwijder alle kanaal-categorie koppelingen voor deze server.
+          {t('instellingen.resetHint')}
         </p>
         {!bevestigReset ? (
           <button className="btn btn-danger" onClick={() => setBevestigReset(true)}>
-            ⚠️ Reset naar standaard
+            {t('instellingen.resetBtn')}
           </button>
         ) : (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px' }}>Weet je het zeker?</span>
+            <span style={{ fontSize: '14px' }}>{t('instellingen.resetConfirm')}</span>
             <button className="btn btn-danger" onClick={resetConfig} disabled={resetBezig}>
-              {resetBezig ? '⏳ Bezig...' : '✔️ Ja, reset alles'}
+              {resetBezig ? t('instellingen.bezig') : t('instellingen.resetJa')}
             </button>
-            <button className="btn" onClick={() => setBevestigReset(false)}>Annuleer</button>
+            <button className="btn" onClick={() => setBevestigReset(false)}>{t('instellingen.annuleer')}</button>
           </div>
         )}
       </div>

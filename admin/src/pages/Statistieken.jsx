@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 
 export default function Statistieken() {
+  const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
@@ -14,30 +16,30 @@ export default function Statistieken() {
     try {
       setData(await api.getStats());
     } catch {
-      toon('Laden mislukt.', 'error');
+      toon(t('stats.ladenMislukt'), 'error');
     }
   };
 
   useEffect(() => { laad(); }, []);
 
   const reset = async () => {
-    if (!confirm('Alle actieve sessies beëindigen en statistieken resetten?')) return;
+    if (!confirm(t('stats.resetConfirm'))) return;
     try {
       await api.resetStats();
       await laad();
-      toon('Statistieken gereset!');
+      toon(t('stats.gereset'));
     } catch {
-      toon('Reset mislukt.', 'error');
+      toon(t('stats.resetMislukt'), 'error');
     }
   };
 
   const reload = async () => {
     try {
       const res = await api.reload();
-      toon(res.ok ? 'Vragen herladen!' : 'Herladen mislukt.', res.ok ? 'success' : 'error');
+      toon(res.ok ? t('stats.herlaadSuccess') : t('stats.herlaadMislukt'), res.ok ? 'success' : 'error');
       if (res.ok) await laad();
     } catch {
-      toon('Herladen mislukt.', 'error');
+      toon(t('stats.herlaadMislukt'), 'error');
     }
   };
 
@@ -48,7 +50,6 @@ export default function Statistieken() {
     return u > 0 ? `${u}u ${m}m` : `${m}m`;
   };
 
-  // Bereken totalen over alle sessies
   const totalen = data?.sessies ? {
     aantalWaarheid: data.sessies.reduce((sum, s) => sum + s.aantalWaarheid, 0),
     aantalDoen: data.sessies.reduce((sum, s) => sum + s.aantalDoen, 0),
@@ -57,10 +58,10 @@ export default function Statistieken() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">📊 Statistieken</h1>
+        <h1 className="page-title">{t('stats.title')}</h1>
         <div className="action-row">
-          <button className="btn btn-ghost" onClick={reload}>🔄 Vragen herladen</button>
-          <button className="btn btn-danger" onClick={reset}>🗑️ Reset sessies</button>
+          <button className="btn btn-ghost" onClick={reload}>{t('stats.vragenHerladen')}</button>
+          <button className="btn btn-danger" onClick={reset}>{t('stats.resetSessies')}</button>
         </div>
       </div>
 
@@ -71,41 +72,39 @@ export default function Statistieken() {
       )}
 
       {!data ? (
-        <p className="muted">Laden...</p>
+        <p className="muted">{t('laden')}</p>
       ) : (
         <>
-          {/* Totaaloverzicht */}
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-value">{data.sessies?.length ?? 0}</div>
-              <div className="stat-label">Actieve sessies</div>
+              <div className="stat-label">{t('stats.activeSessies')}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{(totalen?.aantalWaarheid ?? 0) + (totalen?.aantalDoen ?? 0)}</div>
-              <div className="stat-label">Totaal gespeeld</div>
+              <div className="stat-label">{t('stats.totaalGespeeld')}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value" style={{ color: '#5865f2' }}>{totalen?.aantalWaarheid ?? 0}</div>
-              <div className="stat-label">🔵 Waarheid totaal</div>
+              <div className="stat-label">{t('stats.waarheidTotaal')}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value" style={{ color: '#ed4245' }}>{totalen?.aantalDoen ?? 0}</div>
-              <div className="stat-label">🔴 Doen totaal</div>
+              <div className="stat-label">{t('stats.doenTotaal')}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{data.waarheidTotaal}</div>
-              <div className="stat-label">Waarheidsvragen beschikbaar</div>
+              <div className="stat-label">{t('stats.waarheidBeschikbaar')}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{data.doenTotaal}</div>
-              <div className="stat-label">Doe-opdrachten beschikbaar</div>
+              <div className="stat-label">{t('stats.doenBeschikbaar')}</div>
             </div>
           </div>
 
-          {/* Per sessie */}
           {data.sessies && data.sessies.length === 0 ? (
             <div className="card">
-              <p className="muted">Geen actieve of gepauzeerde sessies. Start een spel via Discord met <code>/wod</code>.</p>
+              <p className="muted">{t('stats.geenSessies')}</p>
             </div>
           ) : (
             data.sessies?.map(sessie => (
@@ -118,28 +117,28 @@ export default function Statistieken() {
                     </span>
                   </h2>
                   <span style={{ fontSize: '12px', color: 'var(--muted, #888)' }}>
-                    Duur: {duurTekst(sessie.sessieStart)}
+                    {t('stats.duur', { time: duurTekst(sessie.sessieStart) })}
                   </span>
                 </div>
 
                 <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
                   <div className="stat-card" style={{ padding: '10px' }}>
                     <div className="stat-value" style={{ fontSize: '20px' }}>{sessie.aantalWaarheid + sessie.aantalDoen}</div>
-                    <div className="stat-label" style={{ fontSize: '11px' }}>Rondes</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>{t('stats.rondes')}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '10px' }}>
                     <div className="stat-value" style={{ fontSize: '20px', color: '#5865f2' }}>{sessie.aantalWaarheid}</div>
-                    <div className="stat-label" style={{ fontSize: '11px' }}>Waarheid</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>{t('stats.waarheid')}</div>
                   </div>
                   <div className="stat-card" style={{ padding: '10px' }}>
                     <div className="stat-value" style={{ fontSize: '20px', color: '#ed4245' }}>{sessie.aantalDoen}</div>
-                    <div className="stat-label" style={{ fontSize: '11px' }}>Doen</div>
+                    <div className="stat-label" style={{ fontSize: '11px' }}>{t('stats.doen')}</div>
                   </div>
                 </div>
 
-                <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>🎲 Reroll ranglijst</h3>
+                <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>{t('stats.rerollRanglijst')}</h3>
                 {Object.keys(sessie.rerollTeller).length === 0 ? (
-                  <p className="muted" style={{ fontSize: '13px' }}>Nog niemand gererolld.</p>
+                  <p className="muted" style={{ fontSize: '13px' }}>{t('stats.niemandGererolld')}</p>
                 ) : (
                   <div className="question-list">
                     {Object.values(sessie.rerollTeller)
@@ -148,7 +147,7 @@ export default function Statistieken() {
                         <div key={i} className="question-item">
                           <span className="question-num">#{i + 1}</span>
                           <span className="question-text">{item.naam}</span>
-                          <span className="muted">{item.teller}× reroll</span>
+                          <span className="muted">{t('stats.rerollTelling', { count: item.teller })}</span>
                         </div>
                       ))}
                   </div>

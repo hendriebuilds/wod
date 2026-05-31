@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api.js';
+import { useLanguage } from '../LanguageContext.jsx';
 
 const STATUS_EMOJI = {
   actief: '🟢',
@@ -7,17 +8,18 @@ const STATUS_EMOJI = {
   beeindigd: '🔴',
 };
 
-const STATUS_LABEL = {
-  actief: 'Actief',
-  gepauzeerd: 'Gepauzeerd',
-  beeindigd: 'Beëindigd',
-};
-
 export default function Sessies() {
+  const { t, strings } = useLanguage();
   const [sessies, setSessies] = useState([]);
   const [filter, setFilter] = useState('alle');
   const [feedback, setFeedback] = useState(null);
   const [bezig, setBezig] = useState(null);
+
+  const STATUS_LABEL = {
+    actief: t('sessies.statusActief'),
+    gepauzeerd: t('sessies.statusGepauzeerd'),
+    beeindigd: t('sessies.statusBeeindigd'),
+  };
 
   const toon = (msg, type = 'success') => {
     setFeedback({ type, msg });
@@ -28,9 +30,9 @@ export default function Sessies() {
     try {
       setSessies(await api.getSessies());
     } catch {
-      toon('Laden mislukt.', 'error');
+      toon(t('sessies.ladenMislukt'), 'error');
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     laad();
@@ -39,14 +41,14 @@ export default function Sessies() {
   }, [laad]);
 
   const beeindig = async (id) => {
-    if (!confirm('Sessie definitief beëindigen?')) return;
+    if (!confirm(t('sessies.beeindigConfirm'))) return;
     setBezig(id);
     try {
       await api.deleteSessie(id);
-      toon('Sessie beëindigd.');
+      toon(t('sessies.beeindigd'));
       await laad();
     } catch {
-      toon('Beëindigen mislukt.', 'error');
+      toon(t('sessies.beeindigenMislukt'), 'error');
     } finally {
       setBezig(null);
     }
@@ -56,7 +58,7 @@ export default function Sessies() {
 
   const formatDatum = (iso) => {
     try {
-      return new Date(iso).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return new Date(iso).toLocaleString(strings.locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch {
       return iso;
     }
@@ -65,9 +67,9 @@ export default function Sessies() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">🎮 Sessies</h1>
+        <h1 className="page-title">{t('sessies.title')}</h1>
         <div className="action-row">
-          <button className="btn btn-ghost" onClick={laad}>🔄 Vernieuwen</button>
+          <button className="btn btn-ghost" onClick={laad}>{t('sessies.vernieuwen')}</button>
         </div>
       </div>
 
@@ -84,7 +86,7 @@ export default function Sessies() {
             className={`btn ${filter === f ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => setFilter(f)}
           >
-            {f === 'alle' ? 'Alle' : STATUS_EMOJI[f] + ' ' + STATUS_LABEL[f]}
+            {f === 'alle' ? t('sessies.alle') : STATUS_EMOJI[f] + ' ' + STATUS_LABEL[f]}
             <span style={{ marginLeft: '6px', opacity: 0.7 }}>
               ({sessies.filter(s => f === 'alle' || s.status === f).length})
             </span>
@@ -95,21 +97,21 @@ export default function Sessies() {
       {gefilterd.length === 0 ? (
         <p className="muted">
           {filter === 'alle'
-            ? 'Geen sessies gevonden. Start een spel via Discord met /wod of /sessie starten.'
-            : `Geen ${STATUS_LABEL[filter]?.toLowerCase() ?? filter} sessies.`}
+            ? t('sessies.geenSessies')
+            : t('sessies.geenStatusSessies', { status: STATUS_LABEL[filter]?.toLowerCase() ?? filter })}
         </p>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--surface-2, #2b2d31)', textAlign: 'left' }}>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>ID</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Naam</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Kanaal</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Status</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Rondes</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Gestart</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>Acties</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colId')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colNaam')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colKanaal')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colStatus')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colRondes')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colGestart')}</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600, fontSize: '13px' }}>{t('sessies.colActies')}</th>
               </tr>
             </thead>
             <tbody>
@@ -161,7 +163,7 @@ export default function Sessies() {
                         onClick={() => beeindig(s.id)}
                         disabled={bezig === s.id}
                       >
-                        {bezig === s.id ? '...' : '⏹️ Beëindigen'}
+                        {bezig === s.id ? '...' : t('sessies.beeindigBtn')}
                       </button>
                     )}
                   </td>
@@ -173,7 +175,7 @@ export default function Sessies() {
       )}
 
       <p className="muted" style={{ marginTop: '12px', fontSize: '12px' }}>
-        Automatisch vernieuwen elke 30 seconden. Sessies worden per kanaal beheerd via Discord (/sessie starten, /sessie pauzeren, etc.)
+        {t('sessies.autoVernieuwen')}
       </p>
     </div>
   );

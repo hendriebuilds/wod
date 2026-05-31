@@ -1,6 +1,6 @@
 {
   "name": "waarheid-of-doen-bot",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Discord bot voor Waarheid of Doen",
   "main": "index.js",
   "type": "module",
