@@ -1,4 +1,4 @@
-# WoD Bot — Waarheid of Doen Discord Bot v1.7.0
+# WoD Bot — Waarheid of Doen Discord Bot v1.8.0
 
 Een Discord bot voor het spel Waarheid of Doen, met profielen, levels en achievements.
 
@@ -85,3 +85,19 @@ wod/
 - **Database**: better-sqlite3
 - **Admin panel**: Express + React (Vite)
 - **Deployment**: Docker, GitHub Container Registry
+
+## Links
+- **GitHub**: https://github.com/hendriebuilds/wod
+- **Docker image**: `ghcr.io/hendriebuilds/wod`
+
+## Docker
+
+Image pullen en draaien:
+```sh
+docker pull ghcr.io/hendriebuilds/wod:latest
+```
+
+Zelf bouwen en pushen:
+```sh
+./build-and-push.sh
+```
