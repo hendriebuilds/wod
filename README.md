@@ -86,18 +86,22 @@ wod/
 - **Admin panel**: Express + React (Vite)
 - **Deployment**: Docker, GitHub Container Registry
 
+
 ## Links
-- **GitHub**: https://github.com/hendriebuilds/wod
+
+- **GitHub**: <https://github.com/hendriebuilds/wod>
 - **Docker image**: `ghcr.io/hendriebuilds/wod`
 
 ## Docker
 
 Image pullen en draaien:
+
 ```sh
 docker pull ghcr.io/hendriebuilds/wod:latest
 ```
 
 Zelf bouwen en pushen:
+
 ```sh
 ./build-and-push.sh
 ```
