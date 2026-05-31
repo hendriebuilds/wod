@@ -86,7 +86,6 @@ wod/
 - **Admin panel**: Express + React (Vite)
 - **Deployment**: Docker, GitHub Container Registry
 
-
 ## Links
 
 - **GitHub**: <https://github.com/hendriebuilds/wod>
