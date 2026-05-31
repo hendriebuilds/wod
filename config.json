@@ -1,4 +1,4 @@
 {
-  "redirectUri": "https://wod.theselfhost.nl/auth/callback",
-  "frontendUrl": "https://wod.theselfhost.nl"
+  "redirectUri": "https://wod.hendriebuilds.dev/auth/callback",
+  "frontendUrl": "https://wod.hendriebuilds.dev"
 }
