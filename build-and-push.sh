@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-IMAGE="ghcr.io/hen3games/wod"
+IMAGE="ghcr.io/hendriebuilds/wod"
 VERSION=$(node -p "require('./package.json').version")
 
 echo "Bouwen: $IMAGE:$VERSION"
