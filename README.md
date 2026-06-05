@@ -1,4 +1,4 @@
-# WoD Bot — Waarheid of Doen Discord Bot v1.8.0
+# WoD Bot — Waarheid of Doen Discord Bot v1.9.0
 
 Een Discord bot voor het spel Waarheid of Doen, met profielen, levels en achievements.
 
@@ -43,19 +43,25 @@ Een Discord bot voor het spel Waarheid of Doen, met profielen, levels en achieve
 | Actie | Punten |
 |---|---|
 | Ronde starten (`/wod`) | +5 |
-| Ronde voltooien (nieuwe ronde knop) | +10 |
-| Reroll | -1 |
-| Passen | -3 |
+| Ronde voltooien (nieuwe ronde knop) | +5 |
+| Reroll | -5 |
+| Passen | -7 |
 | Stemmen in `/nooit` | +3 |
 | `/relatietest` voltooien | +15 (beide spelers) |
 
+Punten zakken nooit onder 0.
+
 ### Levels
-| Level | Naam | Punten |
+| Level | Titel | Punten |
 |---|---|---|
 | 1 | Lafaard | 0–49 |
-| 2 | Durfal | 50–149 |
-| 3 | Onthullingsmaster | 150–299 |
-| 4 | Legenda | 300+ |
+| 2 | Deelnemer | 50–149 |
+| 3 | Durfal | 150–349 |
+| 4 | Avonturier | 350–699 |
+| 5 | Onthulling | 700–1199 |
+| 6 | Verleider | 1200–1999 |
+| 7 | Kampioen | 2000–3499 |
+| 8 | Legenda | 3500+ |
 
 ## Projectstructuur
 
