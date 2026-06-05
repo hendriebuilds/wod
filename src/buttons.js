@@ -13,6 +13,14 @@ async function notifyAchievements(interaction, achievements) {
   }
 }
 
+async function stuurLevelUpNotificatie(interaction, user, levelInfo) {
+  try {
+    await interaction.channel.send({ embeds: [embeds.buildLevelUpEmbed(user, levelInfo)] });
+  } catch (err) {
+    console.error('Level-up notificatie mislukt:', err);
+  }
+}
+
 export async function handleButton(interaction, { client, db, stmts, game, embeds }) {
   const guildId = interaction.guildId;
   const user = interaction.member ?? interaction.user;
@@ -116,7 +124,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const userId = user.id ?? interaction.user.id;
     const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
     cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    const achRerollW = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
+    const { achievements: achRerollW } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -5);
     stmts.incrReroll.run(guildId, interaction.user.id);
     const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
     const vraag = game.getVraag(guildId, 'waarheid', catFilter, sessieId);
@@ -145,7 +153,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const userId = user.id ?? interaction.user.id;
     const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
     cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    const achRerollD = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -1);
+    const { achievements: achRerollD } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -5);
     stmts.incrReroll.run(guildId, interaction.user.id);
     const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
     const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
@@ -174,7 +182,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const sessieId = game.getSessieId(guildId, interaction.channelId);
     const vraag = game.getVraag(guildId, 'waarheid', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
     if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-    const achPassenW = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
+    const { achievements: achPassenW } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -7);
     stmts.incrPassen.run(guildId, interaction.user.id);
     await interaction.deferUpdate();
     await interaction.message.delete();
@@ -197,7 +205,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const sessieId = game.getSessieId(guildId, interaction.channelId);
     const opdracht = game.getVraag(guildId, 'doen', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
     if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-    const achPassenD = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -3);
+    const { achievements: achPassenD } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -7);
     stmts.incrPassen.run(guildId, interaction.user.id);
     await interaction.deferUpdate();
     await interaction.message.delete();
@@ -249,9 +257,10 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       if (sessie.wel.has(userId)) { sessie.wel.delete(userId); }
       else {
         if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          const achNooit = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          const { achievements: achNooit, levelVoor: lvVoor1, levelNa: lvNa1, levelInfo: lvInfo1 } = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
           await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size + 1, sessie.nooit.size)] });
           sessie.wel.set(userId, naam); sessie.nooit.delete(userId);
+          if (lvNa1 > lvVoor1) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, lvInfo1);
           await notifyAchievements(interaction, achNooit);
           return;
         }
@@ -261,9 +270,10 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       if (sessie.nooit.has(userId)) { sessie.nooit.delete(userId); }
       else {
         if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          const achNooit = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
+          const { achievements: achNooit, levelVoor: lvVoor2, levelNa: lvNa2, levelInfo: lvInfo2 } = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
           await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size, sessie.nooit.size + 1)] });
           sessie.nooit.set(userId, naam); sessie.wel.delete(userId);
+          if (lvNa2 > lvVoor2) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, lvInfo2);
           await notifyAchievements(interaction, achNooit);
           return;
         }
@@ -326,8 +336,8 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
         game.relatieSpelers.delete(sessie.speler1.id);
         game.relatieSpelers.delete(sessie.speler2.id);
         game.relatieSessies.delete(sessionId);
-        const achRelatie1 = game.voegPuntenToe(guildId, sessie.speler1.id, sessie.speler1.naam, 15);
-        const achRelatie2 = game.voegPuntenToe(guildId, sessie.speler2.id, sessie.speler2.naam, 15);
+        const { achievements: achRelatie1, levelVoor: lvVoor3, levelNa: lvNa3, levelInfo: lvInfo3 } = game.voegPuntenToe(guildId, sessie.speler1.id, sessie.speler1.naam, 15);
+        const { achievements: achRelatie2, levelVoor: lvVoor4, levelNa: lvNa4, levelInfo: lvInfo4 } = game.voegPuntenToe(guildId, sessie.speler2.id, sessie.speler2.naam, 15);
         const rLove1 = stmts.insertAchievement.run(guildId, sessie.speler1.id, 'Lovebird');
         const rLove2 = stmts.insertAchievement.run(guildId, sessie.speler2.id, 'Lovebird');
         if (rLove1.changes > 0) achRelatie1.push('Lovebird');
@@ -335,6 +345,8 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
         const kanaal = client.channels.cache.get(sessie.channelId);
         if (kanaal) {
           await kanaal.send({ embeds: [embeds.buildRelatieResultaatEmbed(sessie)] });
+          if (lvNa3 > lvVoor3) await kanaal.send({ embeds: [embeds.buildLevelUpEmbed(await client.users.fetch(sessie.speler1.id), lvInfo3)] });
+          if (lvNa4 > lvVoor4) await kanaal.send({ embeds: [embeds.buildLevelUpEmbed(await client.users.fetch(sessie.speler2.id), lvInfo4)] });
           for (const naam of achRelatie1) {
             const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
             await kanaal.send({ content: `${emoji} **Achievement behaald voor ${sessie.speler1.naam}:** ${naam}!` });
@@ -384,10 +396,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     if (b.lijst.length > 0) {
       doelNaam = game.advanceerBeurt(guildId).naam;
     }
-    const achRonde = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, 10);
+    const { achievements: achRonde, levelVoor: lvVoor5, levelNa: lvNa5, levelInfo: lvInfo5 } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, 5);
     stmts.incrRondes.run(guildId, interaction.user.id);
     await interaction.update({ components: [] });
     await interaction.followUp({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
+    if (lvNa5 > lvVoor5) await stuurLevelUpNotificatie(interaction, user, lvInfo5);
     await notifyAchievements(interaction, achRonde);
     return;
   }

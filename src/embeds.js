@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { stmts } from './database.js';
-import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, LEVELS, berekenLevel } from './game.js';
+import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo } from './game.js';
 
 export function buildKiesEmbed(user, doelNaam = null) {
   const naam = doelNaam ?? user.displayName;
@@ -289,17 +289,13 @@ export function buildRelatieResultaatEmbed(s) {
 
 
 export function buildProfielEmbed(row, achievements, targetUser) {
-  const lvlDef = berekenLevel(row.punten);
-  const nextLvl = LEVELS.find(l => l.level === lvlDef.level + 1);
+  const lvlInfo = getLevelInfo(row.punten);
   const naam = row.user_naam;
 
   let voortgangBalk = '';
-  if (nextLvl) {
-    const puntenNaarNext = nextLvl.min - lvlDef.min;
-    const puntenGehad = row.punten - lvlDef.min;
-    const pct = Math.min(1, Math.max(0, puntenGehad / puntenNaarNext));
-    const gevuld = Math.round(pct * 10);
-    voortgangBalk = `${'█'.repeat(gevuld)}${'░'.repeat(10 - gevuld)} ${row.punten}/${nextLvl.min}`;
+  if (lvlInfo.volgend) {
+    const gevuld = Math.round(lvlInfo.voortgang / 10);
+    voortgangBalk = `${'█'.repeat(gevuld)}${'░'.repeat(10 - gevuld)} ${row.punten}/${lvlInfo.volgend.min}`;
   } else {
     voortgangBalk = '██████████ MAX LEVEL';
   }
@@ -310,11 +306,23 @@ export function buildProfielEmbed(row, achievements, targetUser) {
     .setColor(0x5865f2)
     .setTitle(`👤 Profiel van ${naam}`)
     .addFields(
-      { name: '🏅 Level', value: `Level ${lvlDef.level} — ${lvlDef.naam}`, inline: true },
+      { name: '🏅 Level', value: `Level ${lvlInfo.level} — ${lvlInfo.titel}`, inline: true },
       { name: '⭐ Punten', value: `${row.punten}`, inline: true },
       { name: '🏆 Achievements', value: `${achCount} behaald`, inline: true },
       { name: '📈 Voortgang', value: voortgangBalk, inline: false },
     )
+    .setTimestamp();
+}
+
+export function buildLevelUpEmbed(user, levelInfo) {
+  return new EmbedBuilder()
+    .setColor(0xfee75c)
+    .setTitle('🎉 Level Up!')
+    .setDescription(
+      `**${user.displayName ?? user.username}** is gestegen naar ` +
+      `**Lv.${levelInfo.level} — ${levelInfo.titel}**!`
+    )
+    .setThumbnail(user.displayAvatarURL())
     .setTimestamp();
 }
 
@@ -327,8 +335,8 @@ export function buildRanglijstEmbed(rows) {
   }
   const regels = rows.map((row, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    const lvl = berekenLevel(row.punten);
-    return `${medal} **${row.user_naam}** — ${row.punten} punten _(Lv.${lvl.level} ${lvl.naam})_`;
+    const lvl = getLevelInfo(row.punten);
+    return `${medal} **${row.user_naam}** — ${row.punten} punten _(Lv.${lvl.level} ${lvl.titel})_`;
   });
   return new EmbedBuilder()
     .setColor(0xfee75c)
