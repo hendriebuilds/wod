@@ -237,28 +237,41 @@ export const RELATIE_SCORES = [
 // ─── Levels definitie ──────────────────────────────────────────────────────────
 
 export const LEVELS = [
-  { level: 1, naam: 'Lafaard',             min: 0 },
-  { level: 2, naam: 'Durfal',              min: 50 },
-  { level: 3, naam: 'Onthullingsmaster',   min: 150 },
-  { level: 4, naam: 'Legenda',             min: 300 },
+  { level: 1, titel: 'Lafaard',    min: 0    },
+  { level: 2, titel: 'Deelnemer',  min: 50   },
+  { level: 3, titel: 'Durfal',     min: 150  },
+  { level: 4, titel: 'Avonturier', min: 350  },
+  { level: 5, titel: 'Onthulling', min: 700  },
+  { level: 6, titel: 'Verleider',  min: 1200 },
+  { level: 7, titel: 'Kampioen',   min: 2000 },
+  { level: 8, titel: 'Legenda',    min: 3500 },
 ];
 
-export function berekenLevel(punten) {
-  let current = LEVELS[0];
+export function getLevelInfo(punten) {
+  let huidig = LEVELS[0];
   for (const l of LEVELS) {
-    if (punten >= l.min) current = l;
+    if (punten >= l.min) huidig = l;
+    else break;
   }
-  return current;
+  const volgend = LEVELS.find(l => l.min > punten) ?? null;
+  const voortgang = volgend
+    ? Math.floor(((punten - huidig.min) / (volgend.min - huidig.min)) * 100)
+    : 100;
+  return { ...huidig, volgend, voortgang };
 }
 
 // ─── Punten & achievements ─────────────────────────────────────────────────────
 
-export function voegPuntenToe(guildId, userId, userNaam, punten) {
+export function voegPuntenToe(guildId, userId, userNaam, delta) {
   const huidig = stmts.getUserLevel.get(guildId, userId);
-  const huidigPunten = (huidig?.punten ?? 0) + punten;
-  const nieuwLevel = berekenLevel(Math.max(0, huidigPunten));
-  stmts.upsertUserLevel.run(guildId, userId, userNaam, punten, nieuwLevel.level);
-  return checkAchievements(guildId, userId);
+  const huidigePunten = huidig?.punten ?? 0;
+  const levelVoor = getLevelInfo(huidigePunten).level;
+  const nieuwePunten = Math.max(0, huidigePunten + delta);
+  const effectiefDelta = nieuwePunten - huidigePunten;
+  const nieuwLevel = getLevelInfo(nieuwePunten);
+  stmts.upsertUserLevel.run(guildId, userId, userNaam, effectiefDelta, nieuwLevel.level);
+  const achievements = checkAchievements(guildId, userId);
+  return { achievements, levelVoor, levelNa: nieuwLevel.level, levelInfo: nieuwLevel };
 }
 
 export function checkAchievements(guildId, userId) {

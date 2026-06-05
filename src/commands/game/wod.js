@@ -16,6 +16,13 @@ export async function execute(interaction, { game, embeds }) {
   } else {
     doelNaam = game.getHuidigeSpelerNaam(interaction.guildId);
   }
-  game.voegPuntenToe(interaction.guildId, interaction.user.id, user.displayName, 5);
+  const { levelVoor, levelNa, levelInfo } = game.voegPuntenToe(interaction.guildId, interaction.user.id, user.displayName, 5);
   await interaction.reply({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
+  if (levelNa > levelVoor) {
+    try {
+      await interaction.channel.send({ embeds: [embeds.buildLevelUpEmbed(user, levelInfo)] });
+    } catch (err) {
+      console.error('Level-up notificatie mislukt:', err);
+    }
+  }
 }
