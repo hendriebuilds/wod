@@ -224,6 +224,7 @@ app.post('/api/vragen/import', requireAuth, requireGuild, express.text({ type: '
       return res.status(400).json({ error: 'Kolommen "type" en "tekst" zijn verplicht.' });
     }
     let toegevoegd = 0;
+    let overgeslagen = 0;
     const insertMany = db.transaction(() => {
       for (let i = 1; i < lines.length; i++) {
         const row = parseCSVRow(lines[i]);
@@ -231,12 +232,12 @@ app.post('/api/vragen/import', requireAuth, requireGuild, express.text({ type: '
         const tekst = row[tekstIdx]?.trim();
         const categorie = catIdx !== -1 ? (row[catIdx]?.trim() || '18+') : '18+';
         if (!tekst || !['waarheid', 'doen'].includes(type)) continue;
-        stmts.insertVraag.run(guildId, type, tekst, categorie, 0);
-        toegevoegd++;
+        const r = stmts.insertVraag.run(guildId, type, tekst, categorie, 0);
+        if (r.changes === 1) { toegevoegd++; } else { overgeslagen++; }
       }
     });
     insertMany();
-    res.json({ ok: true, toegevoegd });
+    res.json({ success: true, toegevoegd, overgeslagen });
   } catch {
     res.status(400).json({ error: 'Fout bij verwerken van bestand.' });
   }

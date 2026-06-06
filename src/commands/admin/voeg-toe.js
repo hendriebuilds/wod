@@ -16,7 +16,13 @@ export async function execute(interaction, { stmts }) {
   const guildId = interaction.guildId;
   const type = interaction.options.getString('type');
   const tekst = interaction.options.getString('tekst').trim();
-  stmts.insertVraag.run(guildId, type, tekst, 'algemeen', 0);
+  const result = stmts.insertVraag.run(guildId, type, tekst, 'algemeen', 0);
+  if (result.changes === 0) {
+    return interaction.reply({
+      content: '⚠️ Deze vraag bestaat al in deze server (of een identieke variant).',
+      ephemeral: true,
+    });
+  }
   const count = stmts.countVragen.get(guildId, type).cnt;
   const label = type === 'waarheid' ? 'waarheidsvraag' : 'doe-opdracht';
   await interaction.reply({
