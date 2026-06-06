@@ -26,6 +26,7 @@ db.exec(`
     dm_modus INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_vragen_guild_type ON vragen(guild_id, type);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_vragen_guild_tekst_uniq ON vragen (guild_id, LOWER(tekst));
   CREATE TABLE IF NOT EXISTS nooit_stellingen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -102,7 +103,7 @@ export const stmts = {
   getVragen:              db.prepare('SELECT * FROM vragen WHERE guild_id = ? AND type = ? ORDER BY id'),
   getVragenByCategorie:   db.prepare('SELECT * FROM vragen WHERE guild_id = ? AND type = ? AND categorie = ? ORDER BY id'),
   countVragen:            db.prepare('SELECT COUNT(*) AS cnt FROM vragen WHERE guild_id = ? AND type = ?'),
-  insertVraag:            db.prepare('INSERT INTO vragen (guild_id, type, tekst, categorie, dm_modus) VALUES (?, ?, ?, ?, ?)'),
+  insertVraag:            db.prepare('INSERT OR IGNORE INTO vragen (guild_id, type, tekst, categorie, dm_modus) VALUES (?, ?, ?, ?, ?)'),
   updateVraag:            db.prepare('UPDATE vragen SET tekst = ?, categorie = ?, dm_modus = ? WHERE id = ? AND guild_id = ?'),
   deleteVraagById:        db.prepare('DELETE FROM vragen WHERE id = ? AND guild_id = ?'),
   getInstellingen:        db.prepare('SELECT * FROM instellingen WHERE guild_id = ?'),

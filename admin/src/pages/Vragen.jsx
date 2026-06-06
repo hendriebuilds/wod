@@ -111,7 +111,10 @@ export default function Vragen() {
     try {
       const result = await api.importVragen(text);
       await laad();
-      toon(t('vragen.geimporteerd', { count: result.toegevoegd }));
+      const msg = result.overgeslagen > 0
+        ? `✅ ${result.toegevoegd} vragen toegevoegd, ${result.overgeslagen} overgeslagen (duplicaat).`
+        : `✅ ${result.toegevoegd} vragen toegevoegd.`;
+      toon(msg);
     } catch {
       toon(t('vragen.importMislukt'), 'error');
     }
