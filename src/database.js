@@ -26,7 +26,6 @@ db.exec(`
     dm_modus INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_vragen_guild_type ON vragen(guild_id, type);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_vragen_guild_tekst_uniq ON vragen (guild_id, LOWER(tekst));
   CREATE TABLE IF NOT EXISTS nooit_stellingen (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -61,6 +60,10 @@ try { db.exec('ALTER TABLE instellingen ADD COLUMN categorie_per_chat INTEGER NO
 try { db.exec('ALTER TABLE user_levels ADD COLUMN reroll_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE user_levels ADD COLUMN passen_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE user_levels ADD COLUMN rondes_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
+
+// Verwijder bestaande duplicaten (zelfde guild_id + tekst case-insensitive), bewaar laagste id
+db.exec(`DELETE FROM vragen WHERE id NOT IN (SELECT MIN(id) FROM vragen GROUP BY guild_id, LOWER(tekst))`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vragen_guild_tekst_uniq ON vragen (guild_id, LOWER(tekst))`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS channel_categorie (
