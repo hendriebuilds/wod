@@ -274,10 +274,4 @@ export function migreerVanJSON(guildIds) {
     }
   }
 
-  const seedNooit = db.transaction((guildId) => {
-    if (stmts.countNooit.get(guildId).cnt === 0) {
-      NOOIT_STELLINGEN.forEach(tekst => stmts.insertNooit.run(guildId, tekst));
-    }
-  });
-  guildIds.forEach(seedNooit);
 }
