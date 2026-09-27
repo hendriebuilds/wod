@@ -1,57 +1,169 @@
-# WoD Bot — Waarheid of Doen Discord Bot v1.9.0
+# WoD Bot — Waarheid of Doen
 
-Een Discord bot voor het spel Waarheid of Doen, met profielen, levels en achievements.
+Discord-bot voor Waarheid of Doen, met profielen, levels en achievements, en een admin panel om alles per server te beheren.
 
-## Slash Commands
+- **Spel:** `/wod` met knoppen Waarheid, Doen en Verrassing, plus Reroll, Passen (strafvraag) en Nieuwe ronde. Of direct een vraag met `/waarheid` en `/doen`
+- **Beurtrotatie:** spelers toevoegen en de beurt laten doorschuiven met `/beurt`
+- **Sessies:** meerdere sessies per server, per kanaal. Vragen komen per sessie niet dubbel voorbij; pauzeren, hervatten en wisselen met `/sessie`
+- **Nooit heb ik…:** stemmen met knoppen, met eigen stellingen per server
+- **Profielen:** punten, 8 levels, achievements en een ranglijst per server
+- **Fun:** liefdestaaltest, persoonlijkheidstest en relatietest met een andere speler
+- **Vragen:** categorieën (algemeen, vrienden, koppels, feest, 18+), categorie per kanaal, DM-modus, duplicaatcontrole, CSV-import en -export
+- **Admin panel:** Discord-login, beheer per server, Nederlands en Engels
+
+Stack: Node.js 22, discord.js v14, Express, SQLite (better-sqlite3), React + Vite.
+
+---
+
+## Discord-applicatie instellen
+
+In de [Discord Developer Portal](https://discord.com/developers/applications):
+
+1. **Bot:** maak een bot aan en kopieer het token (`DISCORD_TOKEN`). Privileged intents zijn niet nodig.
+2. **OAuth2:** kopieer de Client ID en Client Secret (`DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`) en voeg deze redirect toe: `<PANEL-URL>/auth/callback`.
+3. **Uitnodigen:** voeg de bot toe met de scopes `bot` en `applications.commands` en minimaal deze rechten:
+   View Channels, Send Messages, Embed Links, Read Message History.
+   Wil je de knop "Categoriemappen aanmaken" in het panel gebruiken, geef dan ook Manage Channels.
+
+De slash commands worden bij elke start globaal geregistreerd. Na een eerste installatie kan het even duren voordat ze overal zichtbaar zijn.
+
+---
+
+## Installatie (Docker)
+
+Het image staat op `ghcr.io/hendriebuilds/wod`.
+
+```yaml
+wod:
+  image: ghcr.io/hendriebuilds/wod:latest
+  restart: unless-stopped
+  env_file: .env
+  ports:
+    - "3001:3001"
+  volumes:
+    - wod_data:/app/data
+```
+
+Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-URL>`.
+
+### Omgevingsvariabelen
+
+| Variabele | Beschrijving | Standaard |
+|---|---|---|
+| `DISCORD_TOKEN` | Bot token | vereist |
+| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist voor het panel |
+| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist voor het panel |
+| `SESSION_SECRET` | Lange willekeurige string voor sessies | stel altijd in |
+| `SUPERADMIN_IDS` | Discord user-ID's met toegang tot alle servers, kommagescheiden | leeg |
+| `ADMIN_PORT` | Poort van panel en API | `3001` |
+| `DATA_DIR` | Map voor de database `bot.db` | `/app/data` in de container |
+
+Een willekeurig secret maken: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+### Configuratie van het panel
+
+In `config.json` of via het panel onder **Configuratie**:
+
+```json
+{
+  "redirectUri": "<PANEL-URL>/auth/callback",
+  "frontendUrl": "<PANEL-URL>"
+}
+```
+
+`redirectUri` moet precies gelijk zijn aan de redirect in de Developer Portal, anders geeft Discord "Invalid redirect_uri".
+
+Let op: `config.json` zit in het image. Wijzigingen via het panel gaan verloren bij een nieuw image, tenzij je het bestand als volume mount (staat in de backlog).
+
+### Back-up
+
+Alle vragen, sessies, punten en instellingen staan in `bot.db` in het volume:
+
+```bash
+docker stop wod
+docker cp wod:/app/data/bot.db ./wod-$(date +%F).db
+docker start wod
+```
+
+---
+
+## Eerste keer instellen
+
+1. Start de container en nodig de bot uit op je server.
+2. Log in op het panel via `<PANEL-URL>`. Je ziet de servers waar de bot in zit en waar jij **Server beheren** hebt. Superadmins zien alle servers.
+3. Voeg vragen toe onder **Vragen** (los of via CSV-import) en eventueel eigen stellingen onder **Nooit**.
+4. Kies onder **Instellingen** de cooldown en de DM-modus. Wil je categorieën per kanaal, dan kun je kanalen koppelen of automatisch categoriemappen laten aanmaken.
+5. Start een spel in Discord met `/wod`.
+
+### Categorieën en 18+
+
+Elke vraag heeft een categorie: `algemeen`, `vrienden`, `koppels`, `feest` of `18+`. Met **Categorieën per chat** (Instellingen) koppel je een kanaal aan één categorie. In dat kanaal verschijnen dan alleen vragen uit die categorie.
+
+Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrepen. Wil je 18+ apart houden, koppel dan een eigen kanaal aan `18+` en de andere kanalen aan de overige categorieën.
+
+### CSV-import
+
+Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `18+`). Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen; na de import zie je hoeveel er zijn toegevoegd en overgeslagen.
+
+```csv
+type,tekst,categorie
+waarheid,"Wat is je grootste guilty pleasure?",vrienden
+doen,"Doe je beste imitatie van iemand in dit kanaal",feest
+```
+
+---
+
+## Slash commands
 
 ### Spel
 | Command | Beschrijving |
 |---|---|
-| `/wod` | Start een ronde Waarheid of Doen |
-| `/waarheid` | Krijg direct een waarheidsvraag |
-| `/doen` | Krijg direct een doe-opdracht |
-| `/beurt` | Beheer de beurtrotatie |
-| `/nooit` | Start een ronde 'Nooit heb ik...' |
-| `/statistieken` | Bekijk sessiestatistieken |
+| `/wod [speler]` | Start een ronde; optioneel gericht op een speler |
+| `/waarheid [nummer]` | Direct een waarheidsvraag, of een specifieke via het nummer uit `/lijst` |
+| `/doen [nummer]` | Direct een doe-opdracht, of een specifieke via het nummer |
+| `/beurt toevoegen\|verwijder\|lijst\|reset\|volgende` | Beurtrotatie beheren |
+| `/nooit [stelling]` | Ronde "Nooit heb ik…"; zonder stelling kiest de bot er een |
+| `/statistieken` | Statistieken van de sessie in dit kanaal |
 
-### Profielen & Levels
+### Profielen
 | Command | Beschrijving |
 |---|---|
-| `/profiel` | Bekijk jouw profiel of dat van een andere speler |
-| `/ranglijst` | Bekijk de top 10 van deze server |
-| `/achievements` | Bekijk jouw behaalde achievements |
+| `/profiel [speler]` | Profiel met level, punten en achievements |
+| `/ranglijst` | Top 10 van deze server |
+| `/achievements` | Jouw achievements |
 
 ### Fun
 | Command | Beschrijving |
 |---|---|
-| `/liefdestaal` | Doe een liefdestaaltest |
-| `/persoonlijkheid` | Doe een persoonlijkheidstest |
-| `/relatietest` | Test hoe goed jij en een andere speler bij elkaar passen |
+| `/liefdestaal` | Liefdestaaltest (10 vragen) |
+| `/persoonlijkheid` | Persoonlijkheidstest (9 vragen) |
+| `/relatietest speler` | Test met een andere speler hoe goed jullie bij elkaar passen |
 
-### Admin
+### Beheer (alleen met Server beheren)
 | Command | Beschrijving |
 |---|---|
-| `/voeg-toe` | Voeg een vraag of opdracht toe |
-| `/verwijder` | Verwijder een vraag of opdracht |
-| `/lijst` | Bekijk alle vragen en opdrachten |
-| `/reload` | Reset de gebruikte vragen |
-| `/reset` | Reset sessie en statistieken |
-| `/sessie` | Beheer spelsessies |
+| `/voeg-toe type tekst` | Vraag of opdracht toevoegen (categorie `algemeen`) |
+| `/verwijder type nummer` | Vraag of opdracht verwijderen, met bevestiging |
+| `/lijst [type]` | Alle vragen met nummer |
+| `/reload` | Gebruikte vragen van de sessie in dit kanaal resetten |
+| `/reset` | Sessie in dit kanaal beëindigen |
+| `/sessie starten\|lijst\|wisselen\|pauzeren\|hervatten\|stoppen\|info` | Sessies beheren |
 
-## Puntensysteem
+---
+
+## Punten en levels
 
 | Actie | Punten |
 |---|---|
 | Ronde starten (`/wod`) | +5 |
-| Ronde voltooien (nieuwe ronde knop) | +5 |
-| Reroll | -5 |
-| Passen | -7 |
-| Stemmen in `/nooit` | +3 |
+| Ronde voltooien (Nieuwe ronde) | +5 |
+| Reroll | −5 |
+| Passen | −7 |
+| Stemmen bij `/nooit` | +3 |
 | `/relatietest` voltooien | +15 (beide spelers) |
 
-Punten zakken nooit onder 0.
+Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kanaal.
 
-### Levels
 | Level | Titel | Punten |
 |---|---|---|
 | 1 | Lafaard | 0–49 |
@@ -63,50 +175,49 @@ Punten zakken nooit onder 0.
 | 7 | Kampioen | 2000–3499 |
 | 8 | Legenda | 3500+ |
 
-## Projectstructuur
+---
 
-```
-wod/
-├── src/
-│   ├── commands/
-│   │   ├── admin/        # Admin slash commands
-│   │   ├── game/         # Game slash commands
-│   │   └── fun/          # Fun slash commands
-│   ├── database.js       # DB setup, schema, stmts
-│   ├── embeds.js         # Embed builders
-│   ├── game.js           # Game logic, sessies, levels
-│   ├── server.js         # Express API server
-│   ├── buttons.js        # Button interaction handlers
-│   └── config.js         # Config laden/opslaan
-├── admin/                # React (Vite) admin panel
-├── index.js              # Discord client + event dispatcher
-├── config.json
-├── Dockerfile
-└── package.json
-```
+## Admin panel
 
-## Tech Stack
-- **Runtime**: Node.js (ESM)
-- **Discord**: discord.js v14
-- **Database**: better-sqlite3
-- **Admin panel**: Express + React (Vite)
-- **Deployment**: Docker, GitHub Container Registry
+| Pagina | Wat je er doet |
+|---|---|
+| **Vragen** | Vragen toevoegen, bewerken en verwijderen; categorie en DM-modus per vraag; CSV-import en -export |
+| **Nooit** | Eigen "Nooit heb ik…"-stellingen |
+| **Sessies** | Alle sessies bekijken en beëindigen |
+| **Statistieken** | Aantal vragen en actieve sessies, rerolls per speler, reset en reload |
+| **Ranglijst** | Top 10 met punten, level en achievements |
+| **Instellingen** | Cooldown, DM-modus, categorie per kanaal, categoriemappen aanmaken, alles terugzetten |
+| **Configuratie** | Redirect URI en frontend-URL van de login |
+| **Servers** | Alleen superadmins: alle servers, overschakelen, bot laten vertrekken |
 
-## Links
+Onderaan de zijbalk wissel je tussen Nederlands en Engels.
 
-- **GitHub**: <https://github.com/hendriebuilds/wod>
-- **Docker image**: `ghcr.io/hendriebuilds/wod`
+---
 
-## Docker
+## Lokaal ontwikkelen
 
-Image pullen en draaien:
+```bash
+npm install
+cp .env.example .env        # zodra .env.example bestaat; anders zelf .env aanmaken
+node index.js               # bot + API op poort 3001, database in ./data
 
-```sh
-docker pull ghcr.io/hendriebuilds/wod:latest
+cd admin
+npm install
+npm run dev                 # panel met hot reload; /api en /auth gaan naar poort 3001
 ```
 
-Zelf bouwen en pushen:
+Gebruik bij voorkeur een aparte testbot en een testserver, zodat je de echte servers niet raakt. Voor de login lokaal: redirect `http://localhost:3001/auth/callback` in de Developer Portal en in `config.json`.
 
-```sh
+---
+
+## Bouwen en publiceren
+
+```bash
 ./build-and-push.sh
 ```
+
+Bouwt het image met de versie uit `package.json` en pusht die tag en `:latest` naar GHCR. **Commit en push eerst naar GitHub**, zodat image en repo altijd dezelfde versie hebben.
+
+## Versiebeheer
+
+Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Commit message: `v<versie> — <korte omschrijving>`. Zie `BACKLOG.md` voor wat er per versie is uitgebracht en wat nog open staat.
