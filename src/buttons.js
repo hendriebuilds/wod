@@ -1,4 +1,10 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import * as embeds from './embeds.js';
+import { isGuildAdmin, GEEN_RECHTEN } from './permissions.js';
+
+// Beveiligde knoppen (alleen Server beheren), gecontroleerd in handleButton:
+// - verwijder_ja_<vraagId>  (uit /verwijder)
+// verwijder_nee (annuleren) mag iedereen.
 
 const ACHIEVEMENT_EMOJIS = {
   'Eerste stap': '👣', 'Durfal': '💪', 'Onthullingsmaster': '🔓',
@@ -25,7 +31,10 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
   const guildId = interaction.guildId;
   const user = interaction.member ?? interaction.user;
 
-  if (game.inCooldown(user.id ?? interaction.user.id, guildId)) return;
+  if (game.inCooldown(interaction.user.id, guildId)) {
+    await interaction.reply({ content: '⏳ Rustig aan! Even wachten…', ephemeral: true });
+    return;
+  }
 
   // ── Kies buttons ──
 
@@ -408,7 +417,9 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
   // ── Verwijder bevestiging buttons ──
 
   if (interaction.customId.startsWith('verwijder_ja_')) {
-    const vraagId = parseInt(interaction.customId.replace('verwijder_ja_', ''));
+    if (!isGuildAdmin(interaction)) { await interaction.reply(GEEN_RECHTEN); return; }
+    const vraagId = parseInt(interaction.customId.replace('verwijder_ja_', ''), 10);
+    if (Number.isNaN(vraagId)) { await interaction.reply({ content: '❌ Ongeldige knop.', ephemeral: true }); return; }
     const vraag = db.prepare('SELECT * FROM vragen WHERE id = ? AND guild_id = ?').get(vraagId, guildId);
     if (!vraag) {
       await interaction.update({

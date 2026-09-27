@@ -28,8 +28,9 @@ export default function Layout({ user, onLogout }) {
   const [activeGuildId, setActiveGuildId] = useState(null);
   const [pageKey, setPageKey] = useState(0);
 
-  const BASE_PAGES = ['vragen', 'nooit', 'sessies', 'statistieken', 'ranglijst', 'instellingen', 'configuratie'];
-  const pages = user?.isSuperAdmin ? [...BASE_PAGES, 'servers'] : BASE_PAGES;
+  const BASE_PAGES = ['vragen', 'nooit', 'sessies', 'statistieken', 'ranglijst', 'instellingen'];
+  const pages = user?.isSuperAdmin ? [...BASE_PAGES, 'configuratie', 'servers'] : BASE_PAGES;
+  const activePage = pages.includes(page) ? page : pages[0];
 
   useEffect(() => {
     api.getGuilds().then(({ guilds, activeGuildId }) => {
@@ -57,7 +58,7 @@ export default function Layout({ user, onLogout }) {
     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`
     : `https://cdn.discordapp.com/embed/avatars/0.png`;
 
-  const PageComponent = PAGE_COMPONENTS[page] ?? Vragen;
+  const PageComponent = PAGE_COMPONENTS[activePage] ?? Vragen;
 
   return (
     <div className="app">
@@ -87,7 +88,7 @@ export default function Layout({ user, onLogout }) {
           {pages.map((key) => (
             <button
               key={key}
-              className={page === key ? 'active' : ''}
+              className={activePage === key ? 'active' : ''}
               onClick={() => setPage(key)}
             >
               {t(`nav.${key}`)}

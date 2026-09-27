@@ -46,19 +46,23 @@ wod:
 
 Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-URL>`.
 
+- **HTTPS en `X-Forwarded-Proto`:** begint `frontendUrl` met `https://`, dan is de sessie-cookie `Secure`. De reverse proxy moet dan de header `X-Forwarded-Proto` meesturen; zonder die header lukt het inloggen niet (je belandt steeds weer op het loginscherm). Of de cookie `Secure` is, wordt bij het starten bepaald: na het wijzigen van `frontendUrl` de container herstarten.
+- **Restart policy:** gebruik `unless-stopped` of `always`. Bij een onverwachte fout (`uncaughtException`) stopt de bot bewust, zodat Docker hem schoon herstart.
+- **Startcontrole:** de bot start niet als een verplichte variabele ontbreekt of `SESSION_SECRET` korter is dan 32 tekens. De log noemt welke variabele het is.
+
 ### Omgevingsvariabelen
 
 | Variabele | Beschrijving | Standaard |
 |---|---|---|
 | `DISCORD_TOKEN` | Bot token | vereist |
-| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist voor het panel |
-| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist voor het panel |
-| `SESSION_SECRET` | Lange willekeurige string voor sessies | stel altijd in |
+| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist |
+| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist |
+| `SESSION_SECRET` | Willekeurige string voor sessies, **minimaal 32 tekens** | vereist |
 | `SUPERADMIN_IDS` | Discord user-ID's met toegang tot alle servers, kommagescheiden | leeg |
 | `ADMIN_PORT` | Poort van panel en API | `3001` |
 | `DATA_DIR` | Map voor de database `bot.db` | `/app/data` in de container |
 
-Een willekeurig secret maken: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+Een willekeurig secret maken: `openssl rand -hex 32`
 
 ### Configuratie van het panel
 
@@ -121,7 +125,8 @@ doen,"Doe je beste imitatie van iemand in dit kanaal",feest
 | `/wod [speler]` | Start een ronde; optioneel gericht op een speler |
 | `/waarheid [nummer]` | Direct een waarheidsvraag, of een specifieke via het nummer uit `/lijst` |
 | `/doen [nummer]` | Direct een doe-opdracht, of een specifieke via het nummer |
-| `/beurt toevoegen\|verwijder\|lijst\|reset\|volgende` | Beurtrotatie beheren |
+| `/beurt toevoegen\|lijst\|volgende` | Beurtrotatie: speler toevoegen, lijst bekijken, naar de volgende speler |
+| `/beurt verwijder\|reset` | Speler uit de rotatie halen of de rotatie wissen (alleen met Server beheren) |
 | `/nooit [stelling]` | Ronde "Nooit heb ik…"; zonder stelling kiest de bot er een |
 | `/statistieken` | Statistieken van de sessie in dit kanaal |
 
@@ -140,6 +145,8 @@ doen,"Doe je beste imitatie van iemand in dit kanaal",feest
 | `/relatietest speler` | Test met een andere speler hoe goed jullie bij elkaar passen |
 
 ### Beheer (alleen met Server beheren)
+De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissies op de server zijn aangepast. Dat geldt ook voor de bevestigingsknop van `/verwijder`.
+
 | Command | Beschrijving |
 |---|---|
 | `/voeg-toe type tekst` | Vraag of opdracht toevoegen (categorie `algemeen`) |
@@ -187,10 +194,12 @@ Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kan
 | **Statistieken** | Aantal vragen en actieve sessies, rerolls per speler, reset en reload |
 | **Ranglijst** | Top 10 met punten, level en achievements |
 | **Instellingen** | Cooldown, DM-modus, categorie per kanaal, categoriemappen aanmaken, alles terugzetten |
-| **Configuratie** | Redirect URI en frontend-URL van de login |
+| **Configuratie** | Alleen superadmins: redirect URI en frontend-URL van de login |
 | **Servers** | Alleen superadmins: alle servers, overschakelen, bot laten vertrekken |
 
 Onderaan de zijbalk wissel je tussen Nederlands en Engels.
+
+Het panel controleert elke minuut opnieuw of je nog *Server beheren* hebt op de actieve server. Raak je die rechten kwijt, dan springt het panel naar een andere server, of naar het loginscherm als er geen server overblijft.
 
 ---
 

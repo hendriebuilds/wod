@@ -18,6 +18,8 @@ export default {
   'login.subtitle': 'Beheer de Waarheid of Doen bot',
   'login.error': 'Je hebt geen beheerdersrechten op deze server.',
   'login.button': 'Inloggen met Discord',
+  'login.errorState': 'Inloggen is verlopen of ongeldig. Probeer het opnieuw.',
+  'login.errorMislukt': 'Inloggen is mislukt. Probeer het later opnieuw.',
 
   'vragen.title': '📝 Vragen beheren',
   'vragen.tabWaarheid': '🔵 Waarheid ({count})',
@@ -166,7 +168,7 @@ export default {
   'configuratie.meerServersTitle': 'ℹ️ Meerdere servers',
   'configuratie.meerServersManage': 'Manage Server',
   'configuratie.meerServersText1': 'De bot werkt automatisch op alle servers waar hij is uitgenodigd. Iedereen met',
-  'configuratie.meerServersText2': '-rechten op zo\'n server kan inloggen op het admin panel. Vragen zijn op dit moment gedeeld tussen alle servers.',
+  'configuratie.meerServersText2': '-rechten op zo\'n server kan inloggen op het admin panel. Vragen, sessies en instellingen zijn per server gescheiden.',
 
   'servers.title': '🌐 Servers',
   'servers.vernieuwen': '🔄 Vernieuwen',

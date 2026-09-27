@@ -128,10 +128,11 @@ export function getCategorieFilter(guildId, channelId) {
 export const cooldowns = new Set();
 
 export function inCooldown(userId, guildId) {
-  if (cooldowns.has(userId)) return true;
-  cooldowns.add(userId);
+  const key = `${guildId}:${userId}`;
+  if (cooldowns.has(key)) return true;
+  cooldowns.add(key);
   const { cooldownMs } = dbGetInstellingen(guildId);
-  setTimeout(() => cooldowns.delete(userId), cooldownMs);
+  setTimeout(() => cooldowns.delete(key), cooldownMs);
   return false;
 }
 

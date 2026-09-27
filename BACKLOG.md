@@ -42,6 +42,21 @@ Staat in de code, maar de versie per item is niet meer bekend.
 - [x] 8 levels (Lafaard → Legenda) in plaats van 4, bestaande punten behouden
 - [x] Level-up melding in het kanaal
 
+## ✅ Uitgebracht in v1.9.3 — Veiligheid & stabiliteit
+
+- [x] Fout in een command of knop geeft een nette melding in plaats van een crash; globale fout-handlers
+- [x] Level-up melding via "Nieuwe ronde" en `/nooit` werkt weer
+- [x] Cooldown geeft een melding en geldt per server
+- [x] `allowedMentions: { parse: [] }` op de client
+- [x] Verplichte omgevingsvariabelen bij het starten; `SESSION_SECRET` minimaal 32 tekens, geen fallback
+- [x] `/api/config` en de pagina Configuratie alleen voor superadmins, met URL-validatie
+- [x] Sessie-cookie `wod.sid` (HttpOnly, Lax, Secure achter HTTPS), OAuth `state`, nieuwe sessie-ID na inloggen
+- [x] Security headers, `x-powered-by` uit, `cors` verwijderd
+- [x] Admin commands, `verwijder_ja_<id>` en `/beurt verwijder|reset` controleren zelf op *Server beheren*
+- [x] Panel controleert rechten opnieuw (cache 60 s); kanaal bij categorie-koppeling gevalideerd
+
+---
+
 ## ✅ Uitgebracht in v1.9.2 — Duplicaatcontrole
 
 - [x] UNIQUE-index op `(guild_id, LOWER(tekst))`, bestaande duplicaten opgeruimd
@@ -65,13 +80,13 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 ## 🐛 Bugs & opschoning
 
-- [ ] `S` ⚠️ **Level-up melding via knoppen werkt niet**
+- [x] `S` ⚠️ **Level-up melding via knoppen werkt niet**
   `stuurLevelUpNotificatie()` in `src/buttons.js` gebruikt `embeds`, maar dat is in dat bestand niet geïmporteerd (alleen als parameter van `handleButton`). De `ReferenceError` wordt afgevangen en gelogd. Bij "Nieuwe ronde" en stemmen bij `/nooit` verschijnt dus nooit een level-up. `embeds` importeren of meegeven.
 
-- [ ] `S` ⚠️ **Een fout in een command of knop laat de bot crashen**
+- [x] `S` ⚠️ **Een fout in een command of knop laat de bot crashen**
   `interactionCreate` heeft geen `try/catch`, en er zijn geen globale handlers voor `unhandledRejection`, `uncaughtException` en `client.on('error')`. Eén mislukte `interaction.message.delete()` of `kanaal.send()` (bijv. geen rechten) stopt het hele proces. Handlers in `try/catch` met een nette ephemeral foutmelding, plus globale handlers die loggen.
 
-- [ ] `S` **Cooldown laat de interactie hangen**
+- [x] `S` **Cooldown laat de interactie hangen**
   Bij een cooldown doet `handleButton` niets, dus Discord toont "Deze interactie is mislukt". Een korte ephemeral melding of `deferUpdate()`. Daarnaast geldt de cooldown nu per gebruiker over alle servers heen; sleutel `guildId:userId`.
 
 - [ ] `S` **Achievements kloppen niet meer met de levels**
@@ -105,7 +120,7 @@ Suggesties om items te bundelen. Vrij te husselen.
   De afhandeling van waarheid/doen (vraag kiezen, teller ophogen, DM of kanaal, knoppen) staat bijna gelijk op tien plekken in `buttons.js`, `waarheid.js` en `doen.js`. Eén functie `stuurVraag(interaction, type, opties)`. Maakt de 18+- en punten-fixes veel kleiner.
 
 - [ ] `S` **Oude teksten**
-  In `configuratie.meerServersText2` (NL en EN) staat nog "Vragen zijn gedeeld tussen alle servers"; dat is niet meer zo. `/reset` zegt "statistieken" te resetten, maar beëindigt alleen de sessie. README-kop noemde v1.9.0.
+  ~~In `configuratie.meerServersText2` (NL en EN) staat nog "Vragen zijn gedeeld tussen alle servers"~~ (opgelost in v1.9.3). `/reset` zegt "statistieken" te resetten, maar beëindigt alleen de sessie. README-kop noemde v1.9.0.
 
 - [ ] `S` **Foutdetails naar het panel**
   `categoriemappen/aanmaken` en `servers/:guildId` sturen `err.message` terug naar de browser. Vaste foutcode met een tekst uit `nl.js`/`en.js`, details alleen in de log.
@@ -113,29 +128,32 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **Categoriemappen worden dubbel aangemaakt**
   Elke klik op "Categoriemappen aanmaken" maakt een nieuwe categorie "🎮 Waarheid of Doen" met nieuwe kanalen. Eerst controleren wat er al bestaat en alleen ontbrekende kanalen aanmaken.
 
+- [ ] `S` **`/relatietest` pingt de uitgedaagde speler niet**
+  De mention `<@id>` staat in de embed-beschrijving, en daar pingt Discord nooit. Voor een echte melding: de mention in `content` zetten met `allowedMentions: { users: [targetUser.id] }` (de client staat sinds v1.9.3 op `parse: []`).
+
 ---
 
 ## 🔐 Beveiliging
 
-- [ ] `S` ⚠️ **Elke server-admin kan de loginconfiguratie van de hele bot wijzigen**
+- [x] `S` ⚠️ **Elke server-admin kan de loginconfiguratie van de hele bot wijzigen**
   `PUT /api/config` heeft alleen `requireAuth`. Iedereen met *Server beheren* op een willekeurige server met de bot kan `redirectUri` en `frontendUrl` aanpassen. Daarmee breekt de login voor iedereen, of gaat de OAuth-code naar een ander adres. `requireSuperAdmin` op `GET` en `PUT /api/config`, en de pagina Configuratie alleen tonen aan superadmins.
 
-- [ ] `S` ⚠️ **`SESSION_SECRET` verplicht maken**
+- [x] `S` ⚠️ **`SESSION_SECRET` verplicht maken**
   Valt terug op een vaste tekst in de code. Daarmee kan iemand een sessie-cookie vervalsen en als superadmin inloggen. Zonder secret (of korter dan 32 tekens) niet starten, net als bij de Hendriebuilds-bot.
 
-- [ ] `S` ⚠️ **Verwijderknop controleert geen rechten**
+- [x] `S` ⚠️ **Verwijderknop controleert geen rechten**
   `verwijder_ja_<id>` verwijdert een vraag zonder te controleren wie klikt. Het bericht is ephemeral, maar de custom ID is voorspelbaar en `/verwijder` is alleen afgeschermd via `setDefaultMemberPermissions`, wat serverbeheerders kunnen aanpassen. In de knop én in alle admin commands controleren op *Server beheren*.
 
-- [ ] `S` **Verplichte omgevingsvariabelen controleren bij het starten**
+- [x] `S` **Verplichte omgevingsvariabelen controleren bij het starten**
   `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `SESSION_SECRET`. Ontbreekt er één, dan een duidelijke logregel en stoppen met exitcode 1.
 
-- [ ] `S` **OAuth `state`-parameter**
+- [x] `S` **OAuth `state`-parameter**
   De login stuurt geen `state` mee, dus login-CSRF is mogelijk. Willekeurige `state` in de sessie zetten en bij de callback vergelijken.
 
-- [ ] `S` **Rechten alleen bij het inloggen gecontroleerd**
+- [x] `S` **Rechten alleen bij het inloggen gecontroleerd**
   De lijst met servers komt uit de login en blijft 24 uur geldig. Wie *Server beheren* kwijtraakt of uit de server wordt gezet, kan het panel voor die server blijven gebruiken. Bij `requireGuild` (kort gecachet, bijv. 1 minuut) opnieuw controleren of de gebruiker nog lid is met de juiste rechten.
 
-- [ ] `S` **Sessie-cookie instellen**
+- [x] `S` **Sessie-cookie instellen**
   `secure: false` en geen `sameSite`. Instellen: `httpOnly`, `sameSite: 'lax'`, `secure: true` achter HTTPS met `app.set('trust proxy', 1)`, en een `maxAge`.
 
 - [ ] `M` **CSRF-bescherming op de API**
@@ -144,16 +162,16 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `M` **Sessies niet in het geheugen**
   `express-session` gebruikt de MemoryStore: iedereen is uitgelogd na een herstart en het lekt geheugen. Eigen kleine store in SQLite, of een package na toestemming.
 
-- [ ] `S` **Security headers op het panel**
+- [x] `S` **Security headers op het panel**
   `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `X-Robots-Tag: noindex`. Met een paar regels middleware, geen package.
 
-- [ ] `S` **`cors` kan weg**
+- [x] `S` **`cors` kan weg**
   Panel en API draaien op hetzelfde adres, dus CORS is niet nodig. `cors` met `credentials: true` verwijderen verkleint het risico (en scheelt een package).
 
-- [ ] `S` **Kanaal bij categorie-koppeling niet gecontroleerd**
+- [x] `S` **Kanaal bij categorie-koppeling niet gecontroleerd**
   `POST /api/channel-categorie` slaat elk `channelId` op. Controleren dat het een tekstkanaal van de actieve server is.
 
-- [ ] `S` **`allowedMentions` beperken**
+- [x] `S` **`allowedMentions` beperken**
   Bij berichten met tekst van spelers (stellingen van `/nooit`, namen, vragen) `allowedMentions: { parse: [] }`, zodat er nooit iemand gepingd wordt.
 
 - [ ] `M` **Auditlog van beheeracties**
@@ -227,7 +245,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **Beurt overnemen**
   Knop waarmee een andere speler de beurt overneemt (bijv. als de speler aan de beurt even weg is).
 
-- [ ] `S` **Beurtrotatie beheren alleen voor spelers of admins**
+- [x] `S` **Beurtrotatie beheren alleen voor spelers of admins**
   Nu kan iedereen `/beurt reset` of `/beurt verwijder` doen. Bepalen wie dat mag.
 
 - [ ] `M` **Sessie-export**

@@ -1,10 +1,10 @@
 import express from 'express';
 import session from 'express-session';
-import cors from 'cors';
+import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { ChannelType } from 'discord.js';
+import { ChannelType, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import { db, stmts, dbGetInstellingen } from './database.js';
 import { sessieCache, getSessieCache, saveSessieCache } from './game.js';
 import { config, slaConfigOp, isSuperAdmin } from './config.js';
@@ -18,13 +18,33 @@ const app = express();
 const ADMIN_PORT = parseInt(process.env.ADMIN_PORT || '3001');
 const DISCORD_API = 'https://discord.com/api/v10';
 
-app.use(cors({ origin: (_, cb) => cb(null, config.frontendUrl), credentials: true }));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Robots-Tag': 'noindex, nofollow',
+  });
+  next();
+});
 app.use(express.json());
+
+// secure wordt bij het starten bepaald; een gewijzigde frontendUrl geldt pas na een herstart
+const cookieSecure = config.frontendUrl.startsWith('https://');
+console.log(`🔒 Sessie-cookie: secure=${cookieSecure}`);
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'changeme-zet-een-echt-secret-in-.env',
+  name: 'wod.sid',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 },
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: cookieSecure,
+    maxAge: 24 * 60 * 60 * 1000,
+  },
 }));
 
 function requireAuth(req, res, next) {
@@ -32,9 +52,59 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function requireGuild(req, res, next) {
-  if (!req.session.activeGuildId) return res.status(400).json({ error: 'Geen server geselecteerd.' });
-  next();
+// ── Rechten opnieuw controleren (cache 60 s) ──
+
+const toegangCache = new Map(); // `${userId}:${guildId}` → { ok, verloopt }
+const TOEGANG_TTL = 60_000;
+const GEEN_LID_CODES = new Set([10004, 10007]); // Unknown Guild, Unknown Member
+
+class DiscordOnbereikbaar extends Error {}
+
+async function heeftToegang(userId, guildId) {
+  if (isSuperAdmin(userId)) return true;
+  const sleutel = `${userId}:${guildId}`;
+  const hit = toegangCache.get(sleutel);
+  if (hit && hit.verloopt > Date.now()) return hit.ok;
+  let ok = false;
+  const guild = _client.guilds.cache.get(guildId);
+  if (guild) {
+    try {
+      const member = await guild.members.fetch(userId);
+      ok = member.permissions.has(PermissionFlagsBits.ManageGuild);
+    } catch (err) {
+      // Alleen "geen lid/server" trekt de toegang in; andere Discord-fouten niet en worden niet gecachet
+      if (!(err instanceof DiscordAPIError && GEEN_LID_CODES.has(err.code))) {
+        console.error('❌ Rechten controleren mislukt:', err.message);
+        throw new DiscordOnbereikbaar();
+      }
+    }
+  }
+  toegangCache.set(sleutel, { ok, verloopt: Date.now() + TOEGANG_TTL });
+  return ok;
+}
+
+function stuurOnbereikbaar(res) {
+  return res.status(503).json({ error: 'Discord is tijdelijk niet bereikbaar.' });
+}
+
+async function requireGuild(req, res, next) {
+  try {
+    const guildId = req.session.activeGuildId;
+    if (!guildId) return res.status(400).json({ error: 'Geen server geselecteerd.' });
+    const userId = req.session.user.id;
+    if (await heeftToegang(userId, guildId)) return next();
+
+    toegangCache.delete(`${userId}:${guildId}`);
+    req.session.guilds = (req.session.guilds || []).filter(g => g.id !== guildId);
+    if (req.session.guilds.length > 0) {
+      req.session.activeGuildId = req.session.guilds[0].id;
+      return res.status(403).json({ error: 'Geen toegang meer tot deze server.', code: 'geen_toegang_server' });
+    }
+    req.session.destroy(() => res.status(401).json({ error: 'Niet ingelogd' }));
+  } catch (err) {
+    if (err instanceof DiscordOnbereikbaar) return stuurOnbereikbaar(res);
+    next(err);
+  }
 }
 
 function requireSuperAdmin(req, res, next) {
@@ -46,18 +116,26 @@ function requireSuperAdmin(req, res, next) {
 // ── Auth ──
 
 app.get('/auth/login', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.oauthState = state;
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
     redirect_uri: config.redirectUri,
     response_type: 'code',
     scope: 'identify guilds',
+    state,
   });
-  res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
+  req.session.save(() => res.redirect(`https://discord.com/api/oauth2/authorize?${params}`));
 });
 
 app.get('/auth/callback', async (req, res) => {
-  const { code } = req.query;
-  if (!code) return res.status(400).send('Geen code ontvangen.');
+  const { code, state } = req.query;
+  const verwachteState = req.session.oauthState;
+  delete req.session.oauthState;
+  if (!state || !verwachteState || state !== verwachteState) {
+    return res.redirect(`${config.frontendUrl}?error=ongeldige_login`);
+  }
+  if (!code) return res.redirect(`${config.frontendUrl}?error=login_mislukt`);
   try {
     const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
       method: 'POST',
@@ -95,18 +173,25 @@ app.get('/auth/callback', async (req, res) => {
 
     if (adminGuilds.length === 0) return res.redirect(`${config.frontendUrl}?error=geen_toegang`);
 
-    req.session.user = {
-      id: userData.id,
-      username: userData.username,
-      avatar: userData.avatar,
-      isSuperAdmin: isSuperAdmin(userData.id),
-    };
-    req.session.guilds = adminGuilds;
-    req.session.activeGuildId = adminGuilds[0].id;
-    res.redirect(config.frontendUrl);
+    // Nieuwe sessie-ID na het inloggen (tegen sessiefixatie)
+    req.session.regenerate(err => {
+      if (err) {
+        console.error('❌ Sessie vernieuwen mislukt:', err);
+        return res.redirect(`${config.frontendUrl}?error=login_mislukt`);
+      }
+      req.session.user = {
+        id: userData.id,
+        username: userData.username,
+        avatar: userData.avatar,
+        isSuperAdmin: isSuperAdmin(userData.id),
+      };
+      req.session.guilds = adminGuilds;
+      req.session.activeGuildId = adminGuilds[0].id;
+      req.session.save(() => res.redirect(config.frontendUrl));
+    });
   } catch (err) {
     console.error('OAuth fout:', err);
-    res.status(500).send('Authenticatie mislukt.');
+    res.redirect(`${config.frontendUrl}?error=login_mislukt`);
   }
 });
 
@@ -379,8 +464,13 @@ app.get('/api/channel-categorie', requireAuth, requireGuild, (req, res) => {
 app.post('/api/channel-categorie', requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const { channelId, categorie } = req.body;
-  if (!channelId || !categorie?.trim()) return res.status(400).json({ error: 'channelId en categorie zijn verplicht.' });
-  stmts.upsertChannelCategorie.run(guildId, channelId, categorie.trim());
+  if (typeof channelId !== 'string' || !/^\d{17,20}$/.test(channelId)) return res.status(400).json({ error: 'Ongeldig kanaal.' });
+  const cat = typeof categorie === 'string' ? categorie.trim() : '';
+  if (!cat || cat.length > 50) return res.status(400).json({ error: 'Ongeldige categorie.' });
+  // Zelfde kanaaltypes als GET /api/kanalen
+  const kanaal = _client.guilds.cache.get(guildId)?.channels.cache.get(channelId);
+  if (!kanaal || kanaal.type !== ChannelType.GuildText) return res.status(400).json({ error: 'Ongeldig kanaal.' });
+  stmts.upsertChannelCategorie.run(guildId, channelId, cat);
   res.json({ ok: true });
 });
 
@@ -482,11 +572,21 @@ app.delete('/api/servers/:guildId', requireAuth, requireSuperAdmin, async (req, 
   }
 });
 
-app.post('/api/guild', requireAuth, (req, res) => {
+app.post('/api/guild', requireAuth, async (req, res) => {
   const { guildId } = req.body;
   const guilds = req.session.guilds || [];
-  if (!isSuperAdmin(req.session.user.id) && !guilds.find(g => g.id === guildId)) {
-    return res.status(403).json({ error: 'Geen toegang tot deze server.' });
+  if (!isSuperAdmin(req.session.user.id)) {
+    if (!guilds.find(g => g.id === guildId)) return res.status(403).json({ error: 'Geen toegang tot deze server.' });
+    try {
+      if (!(await heeftToegang(req.session.user.id, guildId))) {
+        req.session.guilds = guilds.filter(g => g.id !== guildId);
+        return res.status(403).json({ error: 'Geen toegang tot deze server.' });
+      }
+    } catch (err) {
+      if (err instanceof DiscordOnbereikbaar) return stuurOnbereikbaar(res);
+      console.error('❌ Server wisselen mislukt:', err);
+      return res.status(500).json({ error: 'Server wisselen mislukt.' });
+    }
   }
   if (isSuperAdmin(req.session.user.id) && !guilds.find(g => g.id === guildId)) {
     const guild = _client.guilds.cache.get(guildId);
@@ -498,14 +598,28 @@ app.post('/api/guild', requireAuth, (req, res) => {
 
 // ── Configuratie API ──
 
-app.get('/api/config', requireAuth, (req, res) => {
+app.get('/api/config', requireSuperAdmin, (req, res) => {
   res.json(config);
 });
 
-app.put('/api/config', requireAuth, (req, res) => {
+function isGeldigeUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+app.put('/api/config', requireSuperAdmin, (req, res) => {
   const { redirectUri, frontendUrl } = req.body;
-  if (redirectUri && typeof redirectUri === 'string') config.redirectUri = redirectUri.trim();
-  if (frontendUrl && typeof frontendUrl === 'string') config.frontendUrl = frontendUrl.trim();
+  const nieuweRedirect = typeof redirectUri === 'string' && redirectUri.trim() ? redirectUri.trim() : config.redirectUri;
+  const nieuweFrontend = typeof frontendUrl === 'string' && frontendUrl.trim() ? frontendUrl.trim() : config.frontendUrl;
+  if (!isGeldigeUrl(nieuweRedirect) || !new URL(nieuweRedirect).pathname.endsWith('/auth/callback') || !isGeldigeUrl(nieuweFrontend)) {
+    return res.status(400).json({ error: 'Ongeldige URL.' });
+  }
+  config.redirectUri = nieuweRedirect;
+  config.frontendUrl = nieuweFrontend;
   slaConfigOp();
   res.json(config);
 });

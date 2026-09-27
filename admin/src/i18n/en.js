@@ -18,6 +18,8 @@ export default {
   'login.subtitle': 'Manage the Truth or Dare bot',
   'login.error': "You don't have admin rights on this server.",
   'login.button': 'Log in with Discord',
+  'login.errorState': 'Login expired or was invalid. Please try again.',
+  'login.errorMislukt': 'Login failed. Please try again later.',
 
   'vragen.title': '📝 Manage Questions',
   'vragen.tabWaarheid': '🔵 Truth ({count})',
@@ -166,7 +168,7 @@ export default {
   'configuratie.meerServersTitle': 'ℹ️ Multiple servers',
   'configuratie.meerServersManage': 'Manage Server',
   'configuratie.meerServersText1': 'The bot works automatically on all servers where it has been invited. Everyone with',
-  'configuratie.meerServersText2': 'permissions on such a server can log in to the admin panel. Questions are currently shared between all servers.',
+  'configuratie.meerServersText2': 'permissions on such a server can log in to the admin panel. Questions, sessions and settings are separate per server.',
 
   'servers.title': '🌐 Servers',
   'servers.vernieuwen': '🔄 Refresh',

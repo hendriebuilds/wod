@@ -17,10 +17,13 @@ Node.js 22 + discord.js v14 als ES modules (`"type": "module"`), Express voor AP
 Productie draait op Unraid als Docker-container, met het panel achter een reverse proxy (HTTPS). De database staat in een volume op `DATA_DIR`.
 
 ## Structuur
-- `index.js` — client (intent `Guilds`), command loader (`src/commands/{game,fun,admin}`), globale registratie van slash commands bij `ready`, guild-events, `interactionCreate` (dispatch naar commands en `handleButton`), start server en login
+- `index.js` — laadt eerst `dotenv/config` en `src/env.js`; client (intent `Guilds`, `allowedMentions: { parse: [] }`), globale fout-handlers, command loader (`src/commands/{game,fun,admin}`, opgeslagen als `{ mod, cat }`), globale registratie van slash commands bij `ready`, guild-events, `interactionCreate` (in `try/catch`, rechtencheck voor admin commands, dispatch naar commands en `handleButton`), start server en login
+- `src/env.js` — controle van verplichte omgevingsvariabelen bij het starten (stopt met exitcode 1)
+- `src/permissions.js` — `isGuildAdmin(interaction)` (*Server beheren*) en de melding `GEEN_RECHTEN`
+- `src/interactionError.js` — `replyError()`: fout loggen en de speler een ephemeral foutmelding geven
 - `src/config.js` — `config.json` laden/opslaan (`redirectUri`, `frontendUrl`), `SUPERADMIN_IDS`, `isSuperAdmin()`
 - `src/database.js` — tabellen en migraties, alle prepared statements in `stmts`, `dbGetInstellingen()`, standaard "Nooit"-stellingen, `syncGuildToDb()`, eenmalige migratie van `vragen.json`/`settings.json`
-- `src/game.js` — sessie-cache, beurtrotatie, `getVraag()`, categoriefilter per kanaal, cooldown, data van de fun-tests, `LEVELS`, `voegPuntenToe()`, `checkAchievements()`
+- `src/game.js` — sessie-cache, beurtrotatie, `getVraag()`, categoriefilter per kanaal, cooldown (per `guildId:userId`), data van de fun-tests, `LEVELS`, `voegPuntenToe()`, `checkAchievements()`
 - `src/embeds.js` — alle embeds en knoppenrijen (`build*Embed`, `build*Buttons`)
 - `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen
 - `src/server.js` — Express-app: auth, alle `/api`-routes, statische bestanden van het panel
@@ -63,14 +66,14 @@ Alles behalve `bot_servers` heeft een `guild_id`.
 - `nooit_wel_<id>`, `nooit_nooit_<id>`, `nooit_sluit_<id>` (`<id>` = interaction-ID van `/nooit`)
 - `lt_A`, `lt_B` (liefdestaal), `pt_A`, `pt_B` (persoonlijkheid)
 - `rt_start_<id>`, `rt_A_<id>`, `rt_B_<id>` (relatietest)
-- `verwijder_ja_<vraagId>`, `verwijder_nee`
+- `verwijder_ja_<vraagId>` (alleen *Server beheren*), `verwijder_nee`
 
 Nieuwe knoppen hier toevoegen.
 
 ### Slash commands
 Globaal geregistreerd bij elke start (guild commands worden daarbij leeggemaakt).
 - **Admin** (`setDefaultMemberPermissions(ManageGuild)`): `/voeg-toe type tekst`, `/verwijder type nummer`, `/lijst [type]`, `/reload`, `/reset`, `/sessie starten|lijst|wisselen|pauzeren|hervatten|stoppen|info`
-- **Spel:** `/wod [speler]`, `/waarheid [nummer]`, `/doen [nummer]`, `/beurt toevoegen|verwijder|lijst|reset|volgende`, `/nooit [stelling]`, `/statistieken`, `/profiel [speler]`, `/ranglijst`, `/achievements`
+- **Spel:** `/wod [speler]`, `/waarheid [nummer]`, `/doen [nummer]`, `/beurt toevoegen|verwijder|lijst|reset|volgende` (`verwijder` en `reset` alleen met *Server beheren*), `/nooit [stelling]`, `/statistieken`, `/profiel [speler]`, `/ranglijst`, `/achievements`
 - **Fun:** `/liefdestaal`, `/persoonlijkheid`, `/relatietest speler`
 
 ### Punten en levels
@@ -87,8 +90,9 @@ Punten gaan nooit onder 0. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deel
 
 ### Toegangsregel
 - **Panel:** bij login krijgt de sessie de servers waar de bot in zit én de gebruiker *Server beheren* (`0x20`) heeft. Superadmins (`SUPERADMIN_IDS`) krijgen alle servers. De actieve server staat in `req.session.activeGuildId`.
-- **Routes:** `requireAuth` (ingelogd), `requireGuild` (server gekozen), `requireSuperAdmin` (superadmin).
-- **Admin commands:** alleen via `setDefaultMemberPermissions(ManageGuild)`; de code controleert zelf niets (zie backlog).
+- **Routes:** `requireAuth` (ingelogd), `requireGuild` (server gekozen én rechten opnieuw gecontroleerd via `heeftToegang()`, cache 60 s; bij verlies 403 `geen_toegang_server` of 401), `requireSuperAdmin` (superadmin). `POST /api/guild` controleert ook via `heeftToegang()`. Een tijdelijke Discord-fout geeft 503 en logt niemand uit.
+- **Admin commands en -knoppen:** `setDefaultMemberPermissions(ManageGuild)` bepaalt wie ze ziet; `interactionCreate` (voor `src/commands/admin/*`), `verwijder_ja_<id>` en `/beurt verwijder|reset` controleren zelf met `isGuildAdmin()`.
+- **Login:** OAuth met `state`, nieuwe sessie-ID na inloggen, cookie `wod.sid` (`HttpOnly`, `SameSite=Lax`, `Secure` als `frontendUrl` https is). Fouten gaan naar `?error=geen_toegang|ongeldige_login|login_mislukt`.
 
 ### API-routes (`src/server.js`)
 - **Auth:** `GET /auth/login`, `GET /auth/callback`, `GET /auth/me`, `POST /auth/logout`
@@ -97,7 +101,7 @@ Punten gaan nooit onder 0. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deel
 - **Nooit:** `GET/POST /api/nooit`, `PUT/DELETE /api/nooit/:id`
 - **Sessies en statistieken:** `GET /api/sessies`, `DELETE /api/sessies/:id`, `GET /api/statistieken`, `POST /api/reset`, `POST /api/reload`, `GET /api/ranglijst`
 - **Instellingen:** `GET/PUT /api/instellingen`, `POST /api/reset-config`, `GET/POST /api/channel-categorie`, `DELETE /api/channel-categorie/:channelId`, `GET /api/kanalen`, `GET /api/categorieen`, `POST /api/categoriemappen/aanmaken`
-- **Configuratie:** `GET/PUT /api/config` (nu alleen `requireAuth`, zie backlog ⚠️)
+- **Configuratie:** `GET/PUT /api/config` (`requireSuperAdmin`; `PUT` valideert beide URL's)
 - **Superadmin:** `GET /api/servers`, `DELETE /api/servers/:guildId` (bot verlaat de server)
 - Alles daarbuiten: `admin/dist` (React-app)
 
@@ -105,9 +109,9 @@ Punten gaan nooit onder 0. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deel
 | Variabele | Beschrijving | Standaard |
 |---|---|---|
 | `DISCORD_TOKEN` | Bot token | vereist |
-| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist voor het panel |
-| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist voor het panel |
-| `SESSION_SECRET` | Express-sessie secret | nu met onveilige fallback, zie backlog ⚠️ |
+| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist |
+| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist |
+| `SESSION_SECRET` | Express-sessie secret, minimaal 32 tekens | vereist |
 | `SUPERADMIN_IDS` | Discord user-ID's, kommagescheiden (oud: `SUPERADMIN_ID`) | leeg |
 | `ADMIN_PORT` | Poort van panel en API | `3001` |
 | `DATA_DIR` | Map voor `bot.db` | `./data` (in de container `/app/data`) |
