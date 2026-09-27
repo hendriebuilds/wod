@@ -1,3 +1,13 @@
+// Herlaadt het panel bij verlies van login of van toegang tot de actieve server
+async function handleFout(res, path) {
+  const tekst = await res.text();
+  let data = null;
+  try { data = JSON.parse(tekst); } catch { /* geen JSON */ }
+  if (res.status === 401 && path !== '/auth/me') window.location.reload();
+  if (res.status === 403 && data?.code === 'geen_toegang_server') window.location.reload();
+  throw new Error(tekst);
+}
+
 async function req(method, path, body) {
   const res = await fetch(path, {
     method,
@@ -5,7 +15,7 @@ async function req(method, path, body) {
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await handleFout(res, path);
   return res.json();
 }
 
@@ -16,7 +26,7 @@ async function reqText(method, path, body) {
     headers: { 'Content-Type': 'text/plain' },
     body,
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await handleFout(res, path);
   return res.json();
 }
 

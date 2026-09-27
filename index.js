@@ -1,5 +1,6 @@
+import 'dotenv/config';
+import './src/env.js';
 import { Client, GatewayIntentBits, REST, Routes } from 'discord.js';
-import * as dotenv from 'dotenv';
 import { readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -9,11 +10,22 @@ import * as game from './src/game.js';
 import * as embeds from './src/embeds.js';
 import { handleButton } from './src/buttons.js';
 import { setClient, startServer } from './src/server.js';
-
-dotenv.config();
+import { replyError } from './src/interactionError.js';
+import { isGuildAdmin, GEEN_RECHTEN } from './src/permissions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds],
+  allowedMentions: { parse: [], repliedUser: false },
+});
+
+client.on('error', err => console.error('❌ Discord client-fout:', err));
+client.on('shardError', err => console.error('❌ Shard-fout:', err));
+process.on('unhandledRejection', err => console.error('❌ Onafgehandelde rejection:', err));
+process.on('uncaughtException', err => {
+  console.error('❌ Onafgevangen exception, proces stopt:', err);
+  process.exit(1); // Docker restart policy herstart de container
+});
 
 setClient(client);
 
@@ -25,7 +37,7 @@ for (const cat of categories) {
   const dir = join(__dirname, 'src', 'commands', cat);
   for (const file of readdirSync(dir).filter(f => f.endsWith('.js'))) {
     const mod = await import(join(dir, file));
-    commandMap.set(mod.data.name, mod);
+    commandMap.set(mod.data.name, { mod, cat });
   }
 }
 
@@ -36,7 +48,7 @@ const ctx = { client, db, stmts, game, embeds };
 client.once('ready', async () => {
   console.log(`✅ Ingelogd als ${client.user.tag}`);
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const commandBody = [...commandMap.values()].map(m => m.data.toJSON());
+  const commandBody = [...commandMap.values()].map(e => e.mod.data.toJSON());
 
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commandBody });
@@ -74,21 +86,34 @@ client.on('guildUpdate', (_old, newGuild) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.guildId) {
-    if (interaction.isRepliable()) {
-      await interaction.reply({ content: '❌ Deze bot werkt alleen in servers.', ephemeral: true });
+  const label = interaction.isChatInputCommand()
+    ? `/${interaction.commandName}`
+    : `knop ${interaction.customId ?? '-'}`;
+
+  try {
+    if (!interaction.guildId) {
+      if (interaction.isRepliable()) {
+        await interaction.reply({ content: '❌ Deze bot werkt alleen in servers.', ephemeral: true });
+      }
+      return;
     }
-    return;
-  }
 
-  if (interaction.isChatInputCommand()) {
-    const mod = commandMap.get(interaction.commandName);
-    if (mod) await mod.execute(interaction, ctx);
-    return;
-  }
+    if (interaction.isChatInputCommand()) {
+      const entry = commandMap.get(interaction.commandName);
+      if (!entry) return;
+      if (entry.cat === 'admin' && !isGuildAdmin(interaction)) {
+        await interaction.reply(GEEN_RECHTEN);
+        return;
+      }
+      await entry.mod.execute(interaction, ctx);
+      return;
+    }
 
-  if (interaction.isButton()) {
-    await handleButton(interaction, ctx);
+    if (interaction.isButton()) {
+      await handleButton(interaction, ctx);
+    }
+  } catch (err) {
+    await replyError(interaction, err, label);
   }
 });
 

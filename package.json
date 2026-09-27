@@ -1,6 +1,6 @@
 {
   "name": "waarheid-of-doen-bot",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Discord bot voor Waarheid of Doen",
   "main": "index.js",
   "type": "module",
@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
-    "cors": "^2.8.5",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",

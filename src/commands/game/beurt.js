@@ -1,18 +1,24 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { isGuildAdmin, GEEN_RECHTEN } from '../../permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('beurt')
   .setDescription('Beheer de beurtrotatie.')
   .addSubcommand(sub => sub.setName('toevoegen').setDescription('Voeg een speler toe aan de rotatie.').addUserOption(opt => opt.setName('speler').setDescription('De toe te voegen speler.').setRequired(true)))
-  .addSubcommand(sub => sub.setName('verwijder').setDescription('Verwijder een speler uit de rotatie.').addUserOption(opt => opt.setName('speler').setDescription('De te verwijderen speler.').setRequired(true)))
+  .addSubcommand(sub => sub.setName('verwijder').setDescription('Verwijder een speler uit de rotatie. (Alleen voor admins)').addUserOption(opt => opt.setName('speler').setDescription('De te verwijderen speler.').setRequired(true)))
   .addSubcommand(sub => sub.setName('lijst').setDescription('Bekijk de huidige rotatie.'))
-  .addSubcommand(sub => sub.setName('reset').setDescription('Wis de rotatie.'))
+  .addSubcommand(sub => sub.setName('reset').setDescription('Wis de rotatie. (Alleen voor admins)'))
   .addSubcommand(sub => sub.setName('volgende').setDescription('Sla de huidige speler over en ga naar de volgende.'));
 
 export async function execute(interaction, { game }) {
   const guildId = interaction.guildId;
   const sub = interaction.options.getSubcommand();
   const b = game.getBeurten(guildId);
+
+  if ((sub === 'reset' || sub === 'verwijder') && !isGuildAdmin(interaction)) {
+    await interaction.reply(GEEN_RECHTEN);
+    return;
+  }
 
   if (sub === 'toevoegen') {
     const doelUser = interaction.options.getUser('speler');
