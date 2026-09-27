@@ -145,7 +145,7 @@ In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>
    - Bouw het panel (`cd admin && npm run build`) als er iets in `admin/` is veranderd, en controleer dat er geen fouten zijn.
    - Werk `VERSION` en `package.json` bij (semantic versioning: PATCH = fix, MINOR = feature, MAJOR = herstructurering).
    - Werk `README.md` bij bij inhoudelijke wijzigingen (functies, commands, instellingen, routes, rechten, omgevingsvariabelen, deployment).
-   - Werk `BACKLOG.md` bij: vink meegenomen items af en voeg nieuwe items toe.
+   - Werk `BACKLOG.md` bij: vink meegenomen items af (ook dubbele items elders in de backlog), voeg nieuwe items toe, en haal een focus-release weg zodra al zijn items zijn uitgebracht.
    - Werk dit bestand bij als structuur, tabellen, instellingen, commands, knoppen, routes of omgevingsvariabelen veranderen.
    - Maak **één commit** met de boodschap `v<versie> — <korte omschrijving>`, bijv. `v1.9.3 — configuratie alleen voor superadmins`, en **push** naar GitHub.
    - Geef een **samenvatting**: wat er is gebouwd, hoe Hendrie het test (concrete stappen in Discord en het panel), en wat openstaat of is afgeweken van het plan.

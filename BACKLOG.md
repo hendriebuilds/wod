@@ -42,6 +42,11 @@ Staat in de code, maar de versie per item is niet meer bekend.
 - [x] 8 levels (Lafaard → Legenda) in plaats van 4, bestaande punten behouden
 - [x] Level-up melding in het kanaal
 
+## ✅ Uitgebracht in v1.9.2 — Duplicaatcontrole
+
+- [x] UNIQUE-index op `(guild_id, LOWER(tekst))`, bestaande duplicaten opgeruimd
+- [x] `/voeg-toe` meldt een dubbele vraag; CSV-import toont toegevoegd en overgeslagen
+
 ## ✅ Uitgebracht in v1.9.3 — Veiligheid & stabiliteit
 
 - [x] Fout in een command of knop geeft een nette melding in plaats van een crash; globale fout-handlers
@@ -57,21 +62,13 @@ Staat in de code, maar de versie per item is niet meer bekend.
 
 ---
 
-## ✅ Uitgebracht in v1.9.2 — Duplicaatcontrole
-
-- [x] UNIQUE-index op `(guild_id, LOWER(tekst))`, bestaande duplicaten opgeruimd
-- [x] `/voeg-toe` meldt een dubbele vraag; CSV-import toont toegevoegd en overgeslagen
-
----
-
 ## 🎯 Mogelijke focus-releases
 
 Suggesties om items te bundelen. Vrij te husselen.
 
-- **Veiligheid & stabiliteit (patch):** alle ⚠️-items uit 🐛 en 🔐
-- **Standaard doorvoeren (patch):** `VERSION`, `build-and-push.sh` met controles, `.dockerignore`, `admin/node_modules` en `admin/dist` uit git, `config.json` als volume
+- **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `.dockerignore`, `admin/node_modules` en `admin/dist` uit git, lock files, `config.json` als volume
 - **Categorieën per kanaal 2.0:** alles uit 🔞
-- **Punten eerlijk:** farmen onmogelijk, alleen de speler aan de beurt, achievements rechtgezet
+- **Punten eerlijk:** farmen onmogelijk, alleen de speler aan de beurt, achievements rechtgezet, levelnamen in het panel
 - **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen
 - **AI-vraaggenerator:** Anthropic of Ollama met review-stap
 - **Tweetalige bot:** Engelse berichten en vragen per server
@@ -94,6 +91,9 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 - [ ] `S` **Achievements op twee plekken gedefinieerd**
   De voorwaarden staan in `src/game.js`, de lijst met emoji en beschrijving in `src/embeds.js` en nog een emoji-lijst in `src/buttons.js`. Eén definitie in `game.js` waar de rest uit leest.
+
+- [ ] `S` **Panel toont oude levelnamen op de ranglijst**
+  `ranglijst.levelNamen` in `nl.js` en `en.js` heeft nog de 4 levels van vóór v1.9.0. Level 5 en hoger krijgen geen naam, en level 2 t/m 4 een verkeerde (Lv.4 toont "Legenda" in plaats van "Avonturier"). Discord klopt wel, omdat de bot `LEVELS` uit `src/game.js` gebruikt. `GET /api/ranglijst` rekent het level uit met `getLevelInfo(punten)` en stuurt het levelnummer mee. De lijst in beide vertaalbestanden krijgt alle 8 levels. EN: Coward, Participant, Daredevil, Adventurer, Revelation, Seducer, Champion, Legend.
 
 - [ ] `S` **Migratie van `user_levels` in de verkeerde volgorde**
   De `ALTER TABLE user_levels`-regels staan vóór de `CREATE TABLE user_levels` (oorzaak van `errorcodes/user_levels.md`). Werkt nu toevallig, maar alle migraties horen na het aanmaken van de tabellen, met `PRAGMA table_info` in plaats van een lege `catch`.
@@ -302,8 +302,8 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 ## 🖥️ Admin panel
 
-- [ ] `S` **Configuratie alleen voor superadmins**
-  Zie ⚠️ in 🔐. De pagina ook uit de navigatie halen voor gewone admins.
+- [x] `S` **Configuratie alleen voor superadmins**
+  Zie ⚠️ in 🔐. De pagina ook uit de navigatie halen voor gewone admins. (Uitgebracht in v1.9.3)
 
 - [ ] `M` **Panel responsive maken**
   Navigatie en tabellen bruikbaar op mobiel.
@@ -324,8 +324,8 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 ## ⚙️ Technisch & Infra
 
-- [ ] `S` **`VERSION`-bestand en `build-and-push.sh` volgens de standaard**
-  Versie uit `VERSION`, en het script stopt (met een melding) als de repo niet schoon is, er ongepushte commits zijn of `VERSION` en `package.json` verschillen. Zoals `build-push.sh` van de Hendriebuilds-bot.
+- [ ] `S` **`build-and-push.sh` volgens de standaard**
+  `VERSION` bestaat sinds v1.9.3, maar het script leest de versie nog uit `package.json`. Versie uit `VERSION`, en het script stopt (met een melding) als de repo niet schoon is, er ongepushte commits zijn of `VERSION` en `package.json` verschillen. Zoals `build-push.sh` van de Hendriebuilds-bot.
 
 - [ ] `S` **`dockerignore` heet geen `.dockerignore`**
   Het bestand mist de punt en wordt dus niet gebruikt. Daardoor gaat `admin/node_modules` van je eigen machine mee in de build van het panel. Hernoemen en `.env*`, `data/` en `*.db` toevoegen.
