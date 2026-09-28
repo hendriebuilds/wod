@@ -1,6 +1,7 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import * as embeds from './embeds.js';
 import { isGuildAdmin, GEEN_RECHTEN } from './permissions.js';
+import { parseRondeKnop, claimBericht, geefBerichtVrij, kiesVraag, stuurVraag, geenVraagMelding } from './ronde.js';
 
 // Beveiligde knoppen (alleen Server beheren), gecontroleerd in handleButton:
 // - verwijder_ja_<vraagId>  (uit /verwijder)
@@ -27,6 +28,99 @@ async function stuurLevelUpNotificatie(interaction, user, levelInfo) {
   }
 }
 
+// ─── Rondeknoppen ──────────────────────────────────────────────────────────────
+// Alleen de speler van de ronde (in de custom ID) kan klikken, en alleen die
+// speler krijgt of verliest punten. Zie src/ronde.js voor de custom IDs.
+
+async function geefPunten(interaction, game, speler, delta) {
+  const { achievements, levelVoor, levelNa, levelInfo } = game.voegPuntenToe(interaction.guildId, speler.id, speler.naam, delta);
+  if (levelNa > levelVoor) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, levelInfo);
+  await notifyAchievements(interaction, achievements);
+}
+
+async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
+  if (ronde.legacy) {
+    await interaction.reply({ content: '⌛ Deze ronde is van vóór een update. Start een nieuwe met /wod.', ephemeral: true });
+    return;
+  }
+  if (ronde.spelerId !== 'open' && interaction.user.id !== ronde.spelerId) {
+    await interaction.reply({ content: `🙅 Het is de beurt van <@${ronde.spelerId}>.`, ephemeral: true, allowedMentions: { parse: [] } });
+    return;
+  }
+  const messageId = interaction.message.id;
+  if (!claimBericht(messageId)) {
+    await interaction.deferUpdate();
+    return;
+  }
+
+  const guildId = interaction.guildId;
+  const channelId = interaction.channelId;
+  const speler = { id: interaction.user.id, naam: interaction.member?.displayName ?? interaction.user.username };
+
+  if (ronde.actie === 'kies') {
+    let type = ronde.type;
+    let vraag;
+    if (type === 'random') {
+      // Loten; is het ene type leeg, dan het andere
+      const volgorde = Math.random() < 0.5 ? ['waarheid', 'doen'] : ['doen', 'waarheid'];
+      for (const t of volgorde) {
+        vraag = kiesVraag(guildId, channelId, t);
+        type = t;
+        if (vraag) break;
+      }
+    } else {
+      vraag = kiesVraag(guildId, channelId, type);
+    }
+    if (!vraag) {
+      geefBerichtVrij(messageId);
+      await interaction.reply({ content: geenVraagMelding(type), ephemeral: true });
+      return;
+    }
+    const update = { components: [embeds.buildDisabledKiesButtons(speler.id)] };
+    if (ronde.spelerId === 'open') update.embeds = [embeds.buildKiesEmbed({ spelerNaam: speler.naam })];
+    await interaction.update(update);
+    await stuurVraag(interaction, { type, speler, variant: 'normaal', vraag, via: 'followUp' });
+    await geefPunten(interaction, game, speler, 5);
+    return;
+  }
+
+  if (ronde.actie === 'reroll' || ronde.actie === 'passen') {
+    const type = ronde.type;
+    const vraag = kiesVraag(guildId, channelId, type);
+    if (!vraag) {
+      geefBerichtVrij(messageId);
+      await interaction.reply({ content: geenVraagMelding(type), ephemeral: true });
+      return;
+    }
+    if (ronde.actie === 'reroll') {
+      const sessieId = game.getSessieId(guildId, channelId);
+      const cache = game.getSessieCache(sessieId);
+      const huidig = cache.rerollTeller.get(speler.id) ?? { naam: speler.naam, teller: 0 };
+      cache.rerollTeller.set(speler.id, { naam: speler.naam, teller: huidig.teller + 1 });
+      game.saveSessieCache(sessieId);
+    }
+    await interaction.deferUpdate();
+    await interaction.message.delete();
+    await stuurVraag(interaction, { type, speler, variant: ronde.actie === 'reroll' ? 'reroll' : 'straf', vraag, via: 'followUp' });
+    await geefPunten(interaction, game, speler, ronde.actie === 'reroll' ? -5 : -7);
+    if (ronde.actie === 'reroll') stmts.incrReroll.run(guildId, speler.id);
+    else stmts.incrPassen.run(guildId, speler.id);
+    return;
+  }
+
+  // Nieuwe ronde: de speler heeft geantwoord, de beurt schuift door
+  const { achievements, levelVoor, levelNa, levelInfo } = game.voegPuntenToe(guildId, speler.id, speler.naam, 5);
+  stmts.incrRondes.run(guildId, speler.id);
+  await interaction.update({ components: [] });
+  const volgende = game.getBeurten(guildId).lijst.length > 0 ? game.advanceerBeurt(guildId) : null;
+  await interaction.followUp({
+    embeds: [embeds.buildKiesEmbed({ spelerNaam: volgende?.naam ?? null, vorigeNaam: speler.naam })],
+    components: [embeds.buildKiesButtons(volgende?.id ?? 'open')],
+  });
+  if (levelNa > levelVoor) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, levelInfo);
+  await notifyAchievements(interaction, achievements);
+}
+
 export async function handleButton(interaction, { client, db, stmts, game, embeds }) {
   const guildId = interaction.guildId;
   const user = interaction.member ?? interaction.user;
@@ -36,200 +130,11 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     return;
   }
 
-  // ── Kies buttons ──
+  // ── Rondeknoppen (kies, reroll, passen, nieuwe ronde) ──
 
-  if (interaction.customId === 'kies_waarheid') {
-    await interaction.update({ components: [embeds.buildDisabledKiesButtons()] });
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const vraag = game.getVraag(guildId, 'waarheid', catFilter, sessieId);
-    if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-    const cache = game.getSessieCache(sessieId);
-    cache.aantalWaarheid++;
-    game.saveSessieCache(sessieId);
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || vraag.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
-        await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('waarheid')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-    }
-    return;
-  }
-
-  if (interaction.customId === 'kies_doen') {
-    await interaction.update({ components: [embeds.buildDisabledKiesButtons()] });
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
-    if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-    const cache = game.getSessieCache(sessieId);
-    cache.aantalDoen++;
-    game.saveSessieCache(sessieId);
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || opdracht.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
-        await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-    }
-    return;
-  }
-
-  if (interaction.customId === 'kies_random') {
-    await interaction.update({ components: [embeds.buildDisabledKiesButtons()] });
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const inst = game.dbGetInstellingen(guildId);
-    if (Math.random() < 0.5) {
-      const vraag = game.getVraag(guildId, 'waarheid', catFilter, sessieId);
-      if (!vraag) { await interaction.followUp({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-      const cache = game.getSessieCache(sessieId);
-      cache.aantalWaarheid++;
-      game.saveSessieCache(sessieId);
-      if (inst.dmModus || vraag.dm_modus) {
-        try {
-          await interaction.user.send({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)] });
-          await interaction.followUp({ content: `📩 Vraag verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('waarheid')] });
-        } catch {
-          await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-        }
-      } else {
-        await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-      }
-    } else {
-      const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
-      if (!opdracht) { await interaction.followUp({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-      const cache = game.getSessieCache(sessieId);
-      cache.aantalDoen++;
-      game.saveSessieCache(sessieId);
-      if (inst.dmModus || opdracht.dm_modus) {
-        try {
-          await interaction.user.send({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
-          await interaction.followUp({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-        } catch {
-          await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-        }
-      } else {
-        await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    }
-    return;
-  }
-
-  // ── Reroll buttons ──
-
-  if (interaction.customId === 'reroll_waarheid') {
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const cache = game.getSessieCache(sessieId);
-    const userId = user.id ?? interaction.user.id;
-    const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
-    cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    const { achievements: achRerollW } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -5);
-    stmts.incrReroll.run(guildId, interaction.user.id);
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const vraag = game.getVraag(guildId, 'waarheid', catFilter, sessieId);
-    if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-    game.saveSessieCache(sessieId);
-    await interaction.deferUpdate();
-    await interaction.message.delete();
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || vraag.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)] });
-        await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('waarheid')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildWaarheidEmbed(vraag.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-    }
-    await notifyAchievements(interaction, achRerollW);
-    return;
-  }
-
-  if (interaction.customId === 'reroll_doen') {
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const cache = game.getSessieCache(sessieId);
-    const userId = user.id ?? interaction.user.id;
-    const huidig = cache.rerollTeller.get(userId) ?? { naam: user.displayName, teller: 0 };
-    cache.rerollTeller.set(userId, { naam: user.displayName, teller: huidig.teller + 1 });
-    const { achievements: achRerollD } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -5);
-    stmts.incrReroll.run(guildId, interaction.user.id);
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
-    if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-    game.saveSessieCache(sessieId);
-    await interaction.deferUpdate();
-    await interaction.message.delete();
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || opdracht.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)] });
-        await interaction.followUp({ content: `📩 Reroll verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, true, sessieId)], components: [embeds.buildActieButtons('doen')] });
-    }
-    await notifyAchievements(interaction, achRerollD);
-    return;
-  }
-
-  // ── Passen buttons ──
-
-  if (interaction.customId === 'passen_waarheid') {
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const vraag = game.getVraag(guildId, 'waarheid', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
-    if (!vraag) { await interaction.reply({ content: '❌ Geen waarheidsvragen beschikbaar.', ephemeral: true }); return; }
-    const { achievements: achPassenW } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -7);
-    stmts.incrPassen.run(guildId, interaction.user.id);
-    await interaction.deferUpdate();
-    await interaction.message.delete();
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || vraag.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)] });
-        await interaction.followUp({ content: `📩 Strafvraag verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('waarheid')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildStrafWaarheidEmbed(vraag.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('waarheid')] });
-    }
-    await notifyAchievements(interaction, achPassenW);
-    return;
-  }
-
-  if (interaction.customId === 'passen_doen') {
-    const sessieId = game.getSessieId(guildId, interaction.channelId);
-    const opdracht = game.getVraag(guildId, 'doen', game.getCategorieFilter(guildId, interaction.channelId), sessieId);
-    if (!opdracht) { await interaction.reply({ content: '❌ Geen doe-opdrachten beschikbaar.', ephemeral: true }); return; }
-    const { achievements: achPassenD } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, -7);
-    stmts.incrPassen.run(guildId, interaction.user.id);
-    await interaction.deferUpdate();
-    await interaction.message.delete();
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || opdracht.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)] });
-        await interaction.followUp({ content: `📩 Strafopdracht verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-      } catch {
-        await interaction.followUp({ embeds: [embeds.buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    } else {
-      await interaction.followUp({ embeds: [embeds.buildStrafDoenEmbed(opdracht.tekst, user, guildId, sessieId)], components: [embeds.buildActieButtons('doen')] });
-    }
-    await notifyAchievements(interaction, achPassenD);
+  const ronde = parseRondeKnop(interaction.customId);
+  if (ronde) {
+    await handleRondeKnop(interaction, ronde, { stmts, game, embeds });
     return;
   }
 
@@ -394,23 +299,6 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     } else {
       await interaction.update({ embeds: [embeds.buildLiefdestaalVraagEmbed(sessie.vraagIndex)], components: [embeds.buildLiefdestaalButtons()] });
     }
-    return;
-  }
-
-  // ── Nieuwe ronde button ──
-
-  if (interaction.customId === 'nieuwe_ronde') {
-    let doelNaam = null;
-    const b = game.getBeurten(guildId);
-    if (b.lijst.length > 0) {
-      doelNaam = game.advanceerBeurt(guildId).naam;
-    }
-    const { achievements: achRonde, levelVoor: lvVoor5, levelNa: lvNa5, levelInfo: lvInfo5 } = game.voegPuntenToe(guildId, interaction.user.id, user.displayName, 5);
-    stmts.incrRondes.run(guildId, interaction.user.id);
-    await interaction.update({ components: [] });
-    await interaction.followUp({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
-    if (lvNa5 > lvVoor5) await stuurLevelUpNotificatie(interaction, user, lvInfo5);
-    await notifyAchievements(interaction, achRonde);
     return;
   }
 

@@ -116,8 +116,11 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **`ephemeral: true` is verouderd**
   Vervangen door `flags: MessageFlags.Ephemeral` (discord.js 14.x geeft een waarschuwing).
 
-- [ ] `S` **Veel dubbele code in knoppen en commands**
+- [x] `S` **Veel dubbele code in knoppen en commands** (v1.10.0)
   De afhandeling van waarheid/doen (vraag kiezen, teller ophogen, DM of kanaal, knoppen) staat bijna gelijk op tien plekken in `buttons.js`, `waarheid.js` en `doen.js`. Eén functie `stuurVraag(interaction, type, opties)`. Maakt de 18+- en punten-fixes veel kleiner.
+
+- [ ] `S` **Achievements voor tellers komen een actie te laat**
+  Bij Reroll, Passen en Nieuwe ronde roept `voegPuntenToe()` eerst `checkAchievements()` aan en gaat de teller (`incrReroll`, `incrPassen`, `incrRondes`) pas daarna omhoog. "Op dreef" komt dus pas bij de 4e ronde, "Reroll addict" bij de 11e reroll. De tellers zijn een `UPDATE`, dus ze werken pas als de rij bestaat. Oplossen met een upsert voor de tellers en die vóór de punten uitvoeren. Past bij fase 4 van v1.10.0 (achievements).
 
 - [ ] `S` **Oude teksten**
   ~~In `configuratie.meerServersText2` (NL en EN) staat nog "Vragen zijn gedeeld tussen alle servers"~~ (opgelost in v1.9.3). `/reset` zegt "statistieken" te resetten, maar beëindigt alleen de sessie. README-kop noemde v1.9.0.
@@ -211,7 +214,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` ⚠️ **Punten farmen bij `/nooit`**
   Stem aan, stem uit, stem weer aan: elke keer +3. Bijhouden wie al punten heeft gekregen voor die stemming.
 
-- [ ] `M` **Alleen de speler aan de beurt mag klikken**
+- [x] `M` **Alleen de speler aan de beurt mag klikken** (v1.10.0)
   Iedereen kan op Waarheid/Doen, Reroll, Passen en Nieuwe ronde klikken, en de punten gaan naar wie klikt. Spam op Nieuwe ronde en `/wod` levert telkens +5 op. De speler aan de beurt (of die bij `/wod` gekozen is) opslaan bij het bericht en andere klikkers een ephemeral melding geven. Punten voor `/wod` pas geven als de ronde echt gespeeld is.
 
 - [ ] `M` **`/strafpunten`**

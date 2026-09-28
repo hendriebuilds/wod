@@ -8,21 +8,22 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction, { game, embeds }) {
-  const user = interaction.member ?? interaction.user;
-  const doelLid = interaction.options.getMember('speler');
-  let doelNaam = null;
-  if (doelLid) {
-    doelNaam = doelLid.displayName;
-  } else {
-    doelNaam = game.getHuidigeSpelerNaam(interaction.guildId);
-  }
-  const { levelVoor, levelNa, levelInfo } = game.voegPuntenToe(interaction.guildId, interaction.user.id, user.displayName, 5);
-  await interaction.reply({ embeds: [embeds.buildKiesEmbed(user, doelNaam)], components: [embeds.buildKiesButtons()] });
-  if (levelNa > levelVoor) {
-    try {
-      await interaction.channel.send({ embeds: [embeds.buildLevelUpEmbed(user, levelInfo)] });
-    } catch (err) {
-      console.error('Level-up notificatie mislukt:', err);
+  // Speler van de ronde: optie speler, anders de rotatie, anders jijzelf. Geen punten bij /wod.
+  const doelUser = interaction.options.getUser('speler');
+  let speler;
+  if (doelUser) {
+    if (doelUser.bot) {
+      await interaction.reply({ content: '❌ Een bot kan geen Waarheid of Doen spelen.', ephemeral: true });
+      return;
     }
+    const doelLid = interaction.options.getMember('speler');
+    speler = { id: doelUser.id, naam: doelLid?.displayName ?? doelUser.username };
+  } else {
+    speler = game.getHuidigeSpeler(interaction.guildId)
+      ?? { id: interaction.user.id, naam: interaction.member?.displayName ?? interaction.user.username };
   }
+  await interaction.reply({
+    embeds: [embeds.buildKiesEmbed({ spelerNaam: speler.naam })],
+    components: [embeds.buildKiesButtons(speler.id)],
+  });
 }

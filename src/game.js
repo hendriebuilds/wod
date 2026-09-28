@@ -68,10 +68,11 @@ export function getBeurten(guildId) {
   return beurtenMap.get(guildId);
 }
 
-export function getHuidigeSpelerNaam(guildId) {
+export function getHuidigeSpeler(guildId) {
   const b = getBeurten(guildId);
   if (b.lijst.length === 0) return null;
-  return b.lijst[b.huidig].naam;
+  const { id, naam } = b.lijst[b.huidig];
+  return { id, naam };
 }
 
 export function advanceerBeurt(guildId) {

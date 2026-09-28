@@ -25,7 +25,8 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `src/database.js` — tabellen en migraties, alle prepared statements in `stmts`, `dbGetInstellingen()`, standaard "Nooit"-stellingen, `syncGuildToDb()`, eenmalige migratie van `vragen.json`/`settings.json`
 - `src/game.js` — sessie-cache, beurtrotatie, `getVraag()`, categoriefilter per kanaal, cooldown (per `guildId:userId`), data van de fun-tests, `LEVELS`, `voegPuntenToe()`, `checkAchievements()`
 - `src/embeds.js` — alle embeds en knoppenrijen (`build*Embed`, `build*Buttons`)
-- `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen
+- `src/ronde.js` — rondes: `stuurVraag()` (de enige plek die een waarheid/doen-embed met actieknoppen verstuurt, incl. DM-modus), `kiesVraag()`, `parseRondeKnop()`, `claimBericht()`/`geefBerichtVrij()` (één verwerking per bericht)
+- `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen; rondeknoppen in `handleRondeKnop()` (alleen de speler uit de custom ID)
 - `src/server.js` — Express-app: auth, alle `/api`-routes, statische bestanden van het panel
 - `src/commands/admin/` — `voeg-toe`, `verwijder`, `lijst`, `reload`, `reset`, `sessie`
 - `src/commands/game/` — `wod`, `waarheid`, `doen`, `beurt`, `nooit`, `statistieken`, `profiel`, `ranglijst`, `achievements`
@@ -63,8 +64,9 @@ Alles behalve `bot_servers` heeft een `guild_id`.
 | `categorie_per_chat` | vragen filteren op de categorie van het kanaal | `0` |
 
 ### Knoppen (custom IDs)
-- `kies_waarheid`, `kies_doen`, `kies_random`
-- `reroll_waarheid`, `reroll_doen`, `passen_waarheid`, `passen_doen`, `nieuwe_ronde`
+Rondeknoppen dragen de speler van de ronde (`<id>` = Discord-ID, 17–20 cijfers). Alleen die speler kan klikken; anderen krijgen een ephemeral melding. Oude IDs zonder speler geven de melding dat de ronde verlopen is.
+- `kies_waarheid_<id|open>`, `kies_doen_<id|open>`, `kies_random_<id|open>` (`open`: de eerste die kiest, is aan de beurt)
+- `reroll_waarheid_<id>`, `reroll_doen_<id>`, `passen_waarheid_<id>`, `passen_doen_<id>`, `nieuwe_ronde_<id>`
 - `nooit_wel_<id>`, `nooit_nooit_<id>`, `nooit_sluit_<id>` (`<id>` = interaction-ID van `/nooit`)
 - `lt_A`, `lt_B` (liefdestaal), `pt_A`, `pt_B` (persoonlijkheid)
 - `rt_start_<id>`, `rt_A_<id>`, `rt_B_<id>` (relatietest)
@@ -81,14 +83,15 @@ Globaal geregistreerd bij elke start (guild commands worden daarbij leeggemaakt)
 ### Punten en levels
 | actie | punten |
 |---|---|
-| `/wod` | +5 |
-| Nieuwe ronde | +5 |
-| Reroll | −5 |
-| Passen | −7 |
+| `/wod` | 0 |
+| Waarheid/Doen/Verrassing kiezen (alleen de speler) | +5 |
+| Nieuwe ronde (alleen de speler) | +5 |
+| Reroll (alleen de speler) | −5 |
+| Passen (alleen de speler) | −7 |
 | Stemmen bij `/nooit` | +3 |
 | `/relatietest` voltooid | +15 (beide spelers) |
 
-Punten gaan nooit onder 0. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deelnemer 50 · Durfal 150 · Avonturier 350 · Onthulling 700 · Verleider 1200 · Kampioen 2000 · Legenda 3500. Achievements in `checkAchievements()` (`src/game.js`) en de lijst in `buildAchievementsEmbed()` (`src/embeds.js`).
+Punten gaan nooit onder 0. Reroll en Passen kosten alleen punten als er een nieuwe vraag is. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deelnemer 50 · Durfal 150 · Avonturier 350 · Onthulling 700 · Verleider 1200 · Kampioen 2000 · Legenda 3500. Achievements in `checkAchievements()` (`src/game.js`) en de lijst in `buildAchievementsEmbed()` (`src/embeds.js`).
 
 ### Toegangsregel
 - **Panel:** bij login krijgt de sessie de servers waar de bot in zit én de gebruiker *Server beheren* (`0x20`) heeft. Superadmins (`SUPERADMIN_IDS`) krijgen alle servers. De actieve server staat in `req.session.activeGuildId`.
