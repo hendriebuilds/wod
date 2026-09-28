@@ -2,7 +2,7 @@
 
 Discord-bot voor Waarheid of Doen, met profielen, levels en achievements, en een admin panel om alles per server te beheren.
 
-- **Spel:** `/wod` met knoppen Waarheid, Doen en Verrassing, plus Reroll, Passen (strafvraag) en Nieuwe ronde. Of direct een vraag met `/waarheid` en `/doen`
+- **Spel:** `/wod` met knoppen Waarheid, Doen en Verrassing, plus Reroll, Passen (strafvraag) en Nieuwe ronde. Alleen de speler die aan de beurt is, kan de knoppen van zijn ronde gebruiken. Of direct een vraag met `/waarheid` en `/doen`
 - **Beurtrotatie:** spelers toevoegen en de beurt laten doorschuiven met `/beurt`
 - **Sessies:** meerdere sessies per server, per kanaal. Vragen komen per sessie niet dubbel voorbij; pauzeren, hervatten en wisselen met `/sessie`
 - **Nooit heb ik…:** stemmen met knoppen, met eigen stellingen per server
@@ -122,7 +122,7 @@ doen,"Doe je beste imitatie van iemand in dit kanaal",feest
 ### Spel
 | Command | Beschrijving |
 |---|---|
-| `/wod [speler]` | Start een ronde; optioneel gericht op een speler |
+| `/wod [speler]` | Start een ronde voor een speler: de opgegeven speler, anders wie in `/beurt` aan de beurt is, anders jijzelf |
 | `/waarheid [nummer]` | Direct een waarheidsvraag, of een specifieke via het nummer uit `/lijst` |
 | `/doen [nummer]` | Direct een doe-opdracht, of een specifieke via het nummer |
 | `/beurt toevoegen\|lijst\|volgende` | Beurtrotatie: speler toevoegen, lijst bekijken, naar de volgende speler |
@@ -162,12 +162,16 @@ De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissi
 
 | Actie | Punten |
 |---|---|
-| Ronde starten (`/wod`) | +5 |
+| Waarheid, Doen of Verrassing kiezen | +5 |
 | Ronde voltooien (Nieuwe ronde) | +5 |
 | Reroll | −5 |
 | Passen | −7 |
 | Stemmen bij `/nooit` | +3 |
 | `/relatietest` voltooien | +15 (beide spelers) |
+
+Een ronde starten met `/wod` levert geen punten op. Alleen de speler van de ronde kan kiezen, rerollen, passen en een nieuwe ronde starten, en alleen die speler krijgt of verliest punten. Een gespeelde ronde levert netto +10 op. Reroll en Passen kosten alleen punten als er een nieuwe vraag is.
+
+Na **Nieuwe ronde** toont de bot wie heeft geantwoord en wie nu aan de beurt is. Met een rotatie (`/beurt`) is dat de volgende speler; zonder rotatie is de ronde open en is de eerste die kiest aan de beurt. Knoppen van rondes van vóór v1.10.0 werken niet meer: start een nieuwe ronde met `/wod`.
 
 Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kanaal.
 

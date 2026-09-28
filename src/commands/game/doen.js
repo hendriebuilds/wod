@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { stuurVraag } from '../../ronde.js';
 
 export const data = new SlashCommandBuilder()
   .setName('doen')
@@ -7,54 +8,23 @@ export const data = new SlashCommandBuilder()
     opt.setName('nummer').setDescription('Optioneel: vraag een specifieke opdracht op via nummer (zie /lijst).').setRequired(false).setMinValue(1)
   );
 
-export async function execute(interaction, { stmts, game, embeds }) {
+export async function execute(interaction, { stmts, game }) {
   const guildId = interaction.guildId;
-  const user = interaction.member ?? interaction.user;
+  const speler = { id: interaction.user.id, naam: interaction.member?.displayName ?? interaction.user.username };
   const nummer = interaction.options.getInteger('nummer');
-  const sessieId = game.getSessieId(guildId, interaction.channelId);
 
+  let vraag = null;
   if (nummer !== null) {
-    const opdrachten = stmts.getVragen.all(guildId, 'doen');
-    if (nummer > opdrachten.length) {
+    const vragen = stmts.getVragen.all(guildId, 'doen');
+    if (nummer > vragen.length) {
       await interaction.reply({ content: `❌ Er is geen doe-opdracht met nummer ${nummer}. Gebruik \`/lijst\` om de nummers te zien.`, ephemeral: true });
       return;
     }
-    const opdracht = opdrachten[nummer - 1];
-    const cache = game.getSessieCache(sessieId);
-    cache.gebruikteDoen.add(opdracht.id);
-    cache.aantalDoen++;
+    vraag = vragen[nummer - 1];
+    const sessieId = game.getSessieId(guildId, interaction.channelId);
+    game.getSessieCache(sessieId).gebruikteDoen.add(vraag.id);
     game.saveSessieCache(sessieId);
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || opdracht.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
-        await interaction.reply({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-      } catch {
-        await interaction.reply({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    } else {
-      await interaction.reply({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-    }
-  } else {
-    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
-    const opdracht = game.getVraag(guildId, 'doen', catFilter, sessieId);
-    if (!opdracht) {
-      await interaction.reply({ content: '❌ Er zijn geen doe-opdrachten. Voeg ze toe via het admin panel.', ephemeral: true });
-      return;
-    }
-    const cache = game.getSessieCache(sessieId);
-    cache.aantalDoen++;
-    game.saveSessieCache(sessieId);
-    const inst = game.dbGetInstellingen(guildId);
-    if (inst.dmModus || opdracht.dm_modus) {
-      try {
-        await interaction.user.send({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)] });
-        await interaction.reply({ content: `📩 Opdracht verstuurd via DM aan **${user.displayName}**!`, components: [embeds.buildActieButtons('doen')] });
-      } catch {
-        await interaction.reply({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-      }
-    } else {
-      await interaction.reply({ embeds: [embeds.buildDoenEmbed(opdracht.tekst, user, guildId, false, sessieId)], components: [embeds.buildActieButtons('doen')] });
-    }
   }
+
+  await stuurVraag(interaction, { type: 'doen', speler, variant: 'normaal', vraag, via: 'reply' });
 }

@@ -2,80 +2,85 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { stmts } from './database.js';
 import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo } from './game.js';
 
-export function buildKiesEmbed(user, doelNaam = null) {
-  const naam = doelNaam ?? user.displayName;
+export function buildKiesEmbed({ spelerNaam = null, vorigeNaam = null } = {}) {
+  let tekst;
+  if (spelerNaam) {
+    tekst = vorigeNaam
+      ? `Nu is **${spelerNaam}** aan de beurt! Kies een optie hieronder.`
+      : `Het is **${spelerNaam}**'s beurt! Kies een optie hieronder.`;
+  } else {
+    tekst = 'Wie is de volgende? De eerste die kiest, is aan de beurt.';
+  }
+  if (vorigeNaam) tekst = `✅ **${vorigeNaam}** heeft geantwoord!\n\n${tekst}`;
   return new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('🎮 Waarheid of Doen')
-    .setDescription(`Het is **${naam}**'s beurt! Kies een optie hieronder.`)
+    .setDescription(tekst)
     .setFooter({ text: 'Waarheid of Doen • Durf jij het aan?' });
 }
 
-export function buildWaarheidEmbed(vraagTekst, user, guildId, isReroll = false, sessieId = null) {
+export function buildWaarheidEmbed(vraagTekst, spelerNaam, guildId, isReroll = false, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
   const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(isReroll ? '🔵 Waarheid — Reroll' : '🔵 Waarheid')
-    .setDescription(`**${user.displayName}**, beantwoord eerlijk:\n\n> ${vraagTekst}`)
+    .setDescription(`**${spelerNaam}**, beantwoord eerlijk:\n\n> ${vraagTekst}`)
     .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} vragen gehad` })
     .setTimestamp();
 }
 
-export function buildDoenEmbed(opdrachtTekst, user, guildId, isReroll = false, sessieId = null) {
+export function buildDoenEmbed(opdrachtTekst, spelerNaam, guildId, isReroll = false, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
   const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xed4245)
     .setTitle(isReroll ? '🔴 Doen — Reroll' : '🔴 Doen')
-    .setDescription(`**${user.displayName}**, jouw opdracht:\n\n> ${opdrachtTekst}`)
+    .setDescription(`**${spelerNaam}**, jouw opdracht:\n\n> ${opdrachtTekst}`)
     .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} opdrachten gehad` })
     .setTimestamp();
 }
 
-export function buildStrafWaarheidEmbed(vraagTekst, user, guildId, sessieId = null) {
+export function buildStrafWaarheidEmbed(vraagTekst, spelerNaam, guildId, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
   const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xffa500)
     .setTitle('🔵 Waarheid — Strafvraag')
-    .setDescription(`**${user.displayName}** heeft gepast! Hier is je strafvraag:\n\n> ${vraagTekst}`)
+    .setDescription(`**${spelerNaam}** heeft gepast! Hier is je strafvraag:\n\n> ${vraagTekst}`)
     .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} vragen gehad` })
     .setTimestamp();
 }
 
-export function buildStrafDoenEmbed(opdrachtTekst, user, guildId, sessieId = null) {
+export function buildStrafDoenEmbed(opdrachtTekst, spelerNaam, guildId, sessieId = null) {
   const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
   const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
   return new EmbedBuilder()
     .setColor(0xffa500)
     .setTitle('🔴 Doen — Strafopdracht')
-    .setDescription(`**${user.displayName}** heeft gepast! Hier is je strafopdracht:\n\n> ${opdrachtTekst}`)
+    .setDescription(`**${spelerNaam}** heeft gepast! Hier is je strafopdracht:\n\n> ${opdrachtTekst}`)
     .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} opdrachten gehad` })
     .setTimestamp();
 }
 
-export function buildKiesButtons() {
+// spelerId: Discord-ID van de speler, of 'open' (de eerste die kiest, is aan de beurt)
+export function buildKiesButtons(spelerId, disabled = false) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('kies_waarheid').setLabel('🔵 Waarheid').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('kies_doen').setLabel('🔴 Doen').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('kies_random').setLabel('🎲 Verrassing!').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId(`kies_waarheid_${spelerId}`).setLabel('🔵 Waarheid').setStyle(ButtonStyle.Primary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(`kies_doen_${spelerId}`).setLabel('🔴 Doen').setStyle(ButtonStyle.Danger).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(`kies_random_${spelerId}`).setLabel('🎲 Verrassing!').setStyle(ButtonStyle.Secondary).setDisabled(disabled)
   );
 }
 
-export function buildDisabledKiesButtons() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('kies_waarheid').setLabel('🔵 Waarheid').setStyle(ButtonStyle.Primary).setDisabled(true),
-    new ButtonBuilder().setCustomId('kies_doen').setLabel('🔴 Doen').setStyle(ButtonStyle.Danger).setDisabled(true),
-    new ButtonBuilder().setCustomId('kies_random').setLabel('🎲 Verrassing!').setStyle(ButtonStyle.Secondary).setDisabled(true)
-  );
+export function buildDisabledKiesButtons(spelerId) {
+  return buildKiesButtons(spelerId, true);
 }
 
-export function buildActieButtons(type) {
+export function buildActieButtons(type, spelerId) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`reroll_${type}`).setLabel('🎲 Reroll').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`passen_${type}`).setLabel('❌ Passen').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('nieuwe_ronde').setLabel('🔄 Nieuwe ronde').setStyle(ButtonStyle.Success)
+    new ButtonBuilder().setCustomId(`reroll_${type}_${spelerId}`).setLabel('🎲 Reroll').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`passen_${type}_${spelerId}`).setLabel('❌ Passen').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`nieuwe_ronde_${spelerId}`).setLabel('🔄 Nieuwe ronde').setStyle(ButtonStyle.Success)
   );
 }
 
