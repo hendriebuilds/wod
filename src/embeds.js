@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { stmts } from './database.js';
-import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo } from './game.js';
+import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo, categorieLabel } from './game.js';
 
 export function buildKiesEmbed({ spelerNaam = null, vorigeNaam = null } = {}) {
   let tekst;
@@ -19,48 +19,43 @@ export function buildKiesEmbed({ spelerNaam = null, vorigeNaam = null } = {}) {
     .setFooter({ text: 'Waarheid of Doen • Durf jij het aan?' });
 }
 
-export function buildWaarheidEmbed(vraagTekst, spelerNaam, guildId, isReroll = false, sessieId = null) {
-  const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
-  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
+// teller: { categorie, gehad, totaal }, uitgerekend in stuurVraag() (src/ronde.js)
+function vraagEmbed({ kleur, titel, tekst, eenheid, teller }) {
+  const is18 = teller.categorie === '18+';
   return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(isReroll ? '🔵 Waarheid — Reroll' : '🔵 Waarheid')
-    .setDescription(`**${spelerNaam}**, beantwoord eerlijk:\n\n> ${vraagTekst}`)
-    .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} vragen gehad` })
+    .setColor(kleur)
+    .setTitle(is18 ? `${titel} 🔞` : titel)
+    .setDescription(tekst)
+    .setFooter({ text: `${categorieLabel(teller.categorie)} • ${teller.gehad}/${teller.totaal} ${eenheid} gehad` })
     .setTimestamp();
 }
 
-export function buildDoenEmbed(opdrachtTekst, spelerNaam, guildId, isReroll = false, sessieId = null) {
-  const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
-  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
-  return new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle(isReroll ? '🔴 Doen — Reroll' : '🔴 Doen')
-    .setDescription(`**${spelerNaam}**, jouw opdracht:\n\n> ${opdrachtTekst}`)
-    .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} opdrachten gehad` })
-    .setTimestamp();
+export function buildWaarheidEmbed(vraagTekst, spelerNaam, teller, isReroll = false) {
+  return vraagEmbed({
+    kleur: 0x5865f2, titel: isReroll ? '🔵 Waarheid — Reroll' : '🔵 Waarheid', eenheid: 'vragen', teller,
+    tekst: `**${spelerNaam}**, beantwoord eerlijk:\n\n> ${vraagTekst}`,
+  });
 }
 
-export function buildStrafWaarheidEmbed(vraagTekst, spelerNaam, guildId, sessieId = null) {
-  const totaal = stmts.countVragen.get(guildId, 'waarheid').cnt;
-  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteWaarheid.size ?? 0) : 0;
-  return new EmbedBuilder()
-    .setColor(0xffa500)
-    .setTitle('🔵 Waarheid — Strafvraag')
-    .setDescription(`**${spelerNaam}** heeft gepast! Hier is je strafvraag:\n\n> ${vraagTekst}`)
-    .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} vragen gehad` })
-    .setTimestamp();
+export function buildDoenEmbed(opdrachtTekst, spelerNaam, teller, isReroll = false) {
+  return vraagEmbed({
+    kleur: 0xed4245, titel: isReroll ? '🔴 Doen — Reroll' : '🔴 Doen', eenheid: 'opdrachten', teller,
+    tekst: `**${spelerNaam}**, jouw opdracht:\n\n> ${opdrachtTekst}`,
+  });
 }
 
-export function buildStrafDoenEmbed(opdrachtTekst, spelerNaam, guildId, sessieId = null) {
-  const totaal = stmts.countVragen.get(guildId, 'doen').cnt;
-  const gebruiktCount = sessieId ? (getSessieCache(sessieId)?.gebruikteDoen.size ?? 0) : 0;
-  return new EmbedBuilder()
-    .setColor(0xffa500)
-    .setTitle('🔴 Doen — Strafopdracht')
-    .setDescription(`**${spelerNaam}** heeft gepast! Hier is je strafopdracht:\n\n> ${opdrachtTekst}`)
-    .setFooter({ text: `Waarheid of Doen • ${gebruiktCount}/${totaal} opdrachten gehad` })
-    .setTimestamp();
+export function buildStrafWaarheidEmbed(vraagTekst, spelerNaam, teller) {
+  return vraagEmbed({
+    kleur: 0xffa500, titel: '🔵 Waarheid — Strafvraag', eenheid: 'vragen', teller,
+    tekst: `**${spelerNaam}** heeft gepast! Hier is je strafvraag:\n\n> ${vraagTekst}`,
+  });
+}
+
+export function buildStrafDoenEmbed(opdrachtTekst, spelerNaam, teller) {
+  return vraagEmbed({
+    kleur: 0xffa500, titel: '🔴 Doen — Strafopdracht', eenheid: 'opdrachten', teller,
+    tekst: `**${spelerNaam}** heeft gepast! Hier is je strafopdracht:\n\n> ${opdrachtTekst}`,
+  });
 }
 
 // spelerId: Discord-ID van de speler, of 'open' (de eerste die kiest, is aan de beurt)

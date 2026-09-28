@@ -91,27 +91,41 @@ export function buildBeurtenLijstTekst(guildId) {
 
 // ─── Vraag helpers ─────────────────────────────────────────────────────────────
 
-export function getVraag(guildId, type, categorieFilter = null, sessieId = null) {
-  let vragen = categorieFilter
+export const CATEGORIEEN = {
+  algemeen: { emoji: '🌐', naam: 'Algemeen' },
+  vrienden: { emoji: '👫', naam: 'Vrienden' },
+  koppels:  { emoji: '💑', naam: 'Koppels' },
+  feest:    { emoji: '🎉', naam: 'Feest' },
+  '18+':    { emoji: '🔞', naam: '18+' },
+};
+
+// Alleen voor weergave, bijv. '🔞 18+'
+export function categorieLabel(categorie) {
+  const c = CATEGORIEEN[categorie];
+  return c ? `${c.emoji} ${c.naam}` : `🏷️ ${categorie}`;
+}
+
+// Vragen waaruit gekozen wordt: met een filter alleen die categorie (nooit een fallback).
+export function getVraagPool(guildId, type, categorieFilter = null) {
+  return categorieFilter
     ? stmts.getVragenByCategorie.all(guildId, type, categorieFilter)
     : stmts.getVragen.all(guildId, type);
-  if (vragen.length === 0 && categorieFilter) {
-    vragen = stmts.getVragen.all(guildId, type);
-  }
+}
+
+export function getVraag(guildId, type, categorieFilter = null, sessieId = null) {
+  const vragen = getVraagPool(guildId, type, categorieFilter);
   if (vragen.length === 0) return null;
+  if (!sessieId) return vragen[Math.floor(Math.random() * vragen.length)];
 
-  let gebruikte;
-  if (sessieId) {
-    const cache = getSessieCache(sessieId);
-    gebruikte = type === 'waarheid' ? cache.gebruikteWaarheid : cache.gebruikteDoen;
-  } else {
-    return vragen[Math.floor(Math.random() * vragen.length)];
+  const cache = getSessieCache(sessieId);
+  const gebruikte = type === 'waarheid' ? cache.gebruikteWaarheid : cache.gebruikteDoen;
+  let beschikbaar = vragen.filter(v => !gebruikte.has(v.id));
+  if (beschikbaar.length === 0) {
+    // Alle vragen uit deze pool gehad: alleen deze pool opnieuw, de rest blijft staan
+    for (const v of vragen) gebruikte.delete(v.id);
+    beschikbaar = vragen;
   }
-
-  if (gebruikte.size >= vragen.length) gebruikte.clear();
-  const beschikbaar = vragen.filter(v => !gebruikte.has(v.id));
-  const pool = beschikbaar.length > 0 ? beschikbaar : vragen;
-  const vraag = pool[Math.floor(Math.random() * pool.length)];
+  const vraag = beschikbaar[Math.floor(Math.random() * beschikbaar.length)];
   gebruikte.add(vraag.id);
   saveSessieCache(sessieId);
   return vraag;

@@ -67,7 +67,7 @@ Staat in de code, maar de versie per item is niet meer bekend.
 Suggesties om items te bundelen. Vrij te husselen.
 
 - **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `config.json` als volume
-- **Categorieën per kanaal 2.0:** alles uit 🔞
+- **Categorieën per kanaal 2.0:** de open items uit 🔞 (18+ alleen in eigen kanalen, meerdere categorieën per kanaal, opt-out)
 - **Punten eerlijk:** farmen onmogelijk, alleen de speler aan de beurt, achievements rechtgezet, levelnamen in het panel
 - **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen
 - **AI-vraaggenerator:** Anthropic of Ollama met review-stap
@@ -105,7 +105,7 @@ Suggesties om items te bundelen. Vrij te husselen.
   De database en CSV-import gebruiken `18+` als standaard, `/voeg-toe` gebruikt `algemeen`. Eén standaard kiezen (bij voorkeur `algemeen`), en `/voeg-toe` een optie `categorie` geven met de vaste lijst.
 
 - [ ] `S` **Categorie niet gevalideerd**
-  Panel, API en CSV accepteren elke tekst als categorie. De vaste lijst (algemeen, vrienden, koppels, feest, 18+) op één plek in de code, en de API en import controleren daarop.
+  Panel, API en CSV accepteren elke tekst als categorie. De vaste lijst staat sinds v1.10.0 op één plek (`CATEGORIEEN` in `src/game.js`, nu alleen voor weergave); de API en import moeten daarop controleren.
 
 - [ ] `S` **Lange vragen breken de embed**
   Vragen en stellingen hebben geen maximale lengte. Een lange tekst plus de tekst eromheen gaat over de 4096 tekens van een embed-beschrijving, en een lange naam over de 1024 van een veld (uitslag `/nooit`). Maximale lengte instellen bij invoer (command, panel, CSV) en veilig afkappen bij tonen.
@@ -189,7 +189,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 > Uitgangspunt: zonder koppeling mogen alle categorieën (ook 18+) overal verschijnen. Dat is gewenst. Aparte kanalen zijn een keuze per server, geen verplichting.
 
-- [ ] `S` **Gekoppeld kanaal toont soms andere categorieën**
+- [x] `S` **Gekoppeld kanaal toont soms andere categorieën** (v1.10.0)
   Heeft een gekoppeld kanaal geen vragen (meer) in zijn categorie, dan valt `getVraag()` terug op álle vragen. In een "vrienden"-kanaal kan dan een 18+-vraag verschijnen. `/waarheid nummer:` en `/doen nummer:` negeren de koppeling helemaal. Geen fallback naar andere categorieën maar een melding "geen vragen in deze categorie", en nummers alleen binnen de categorie van het kanaal.
 
 - [ ] `S` 💡 **Optie: 18+ alleen in eigen kanalen**
@@ -198,7 +198,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `M` **Meerdere categorieën per kanaal**
   Nu één categorie per kanaal. Een kanaal "feest + vrienden" of "alles behalve 18+" is logischer. Koppeltabel met meerdere categorieën, of een lijst met toegestane categorieën per kanaal.
 
-- [ ] `S` **Categorie zichtbaar in de embed**
+- [x] `S` **Categorie zichtbaar in de embed** (v1.10.0)
   De categorie (bijv. een 🔞-label bij 18+) in de footer of titel, zodat duidelijk is wat voor vraag het is.
 
 - [ ] `M` **Leeftijdsverificatie-rol 18+**

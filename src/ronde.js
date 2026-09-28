@@ -43,8 +43,12 @@ export function geefBerichtVrij(messageId) {
 
 // ─── Vraag kiezen en versturen ─────────────────────────────────────────────────
 
-export function geenVraagMelding(type) {
-  return type === 'waarheid' ? '❌ Geen waarheidsvragen beschikbaar.' : '❌ Geen doe-opdrachten beschikbaar.';
+export function geenVraagMelding(guildId, channelId, type) {
+  const soort = type === 'waarheid' ? 'waarheidsvragen' : 'doe-opdrachten';
+  const catFilter = game.getCategorieFilter(guildId, channelId);
+  return catFilter
+    ? `❌ Geen ${soort} in de categorie ${game.categorieLabel(catFilter)} van dit kanaal.`
+    : `❌ Geen ${soort} beschikbaar.`;
 }
 
 export function kiesVraag(guildId, channelId, type) {
@@ -59,16 +63,29 @@ const DM_LABEL = {
   straf: { waarheid: 'Strafvraag', doen: 'Strafopdracht' },
 };
 
-function buildVraagEmbed(type, variant, tekst, spelerNaam, guildId, sessieId) {
+// Teller voor de footer: met een categoriefilter alleen binnen die categorie.
+// Alleen gebruikte ID's die nog in de pool zitten tellen mee.
+function berekenTeller(guildId, channelId, type, sessieId, vraag) {
+  const pool = game.getVraagPool(guildId, type, game.getCategorieFilter(guildId, channelId));
+  const cache = game.getSessieCache(sessieId);
+  const gebruikte = type === 'waarheid' ? cache.gebruikteWaarheid : cache.gebruikteDoen;
+  return {
+    categorie: vraag.categorie,
+    gehad: pool.filter(v => gebruikte.has(v.id)).length,
+    totaal: pool.length,
+  };
+}
+
+function buildVraagEmbed(type, variant, tekst, spelerNaam, teller) {
   if (variant === 'straf') {
     return type === 'waarheid'
-      ? embeds.buildStrafWaarheidEmbed(tekst, spelerNaam, guildId, sessieId)
-      : embeds.buildStrafDoenEmbed(tekst, spelerNaam, guildId, sessieId);
+      ? embeds.buildStrafWaarheidEmbed(tekst, spelerNaam, teller)
+      : embeds.buildStrafDoenEmbed(tekst, spelerNaam, teller);
   }
   const isReroll = variant === 'reroll';
   return type === 'waarheid'
-    ? embeds.buildWaarheidEmbed(tekst, spelerNaam, guildId, isReroll, sessieId)
-    : embeds.buildDoenEmbed(tekst, spelerNaam, guildId, isReroll, sessieId);
+    ? embeds.buildWaarheidEmbed(tekst, spelerNaam, teller, isReroll)
+    : embeds.buildDoenEmbed(tekst, spelerNaam, teller, isReroll);
 }
 
 // Stuurt een waarheid/doen-embed met actieknoppen voor de speler.
@@ -79,7 +96,7 @@ export async function stuurVraag(interaction, { type, speler, variant, vraag = n
 
   if (!vraag) vraag = kiesVraag(guildId, interaction.channelId, type);
   if (!vraag) {
-    await verstuur({ content: geenVraagMelding(type), ephemeral: true });
+    await verstuur({ content: geenVraagMelding(guildId, interaction.channelId, type), ephemeral: true });
     return false;
   }
 
@@ -91,7 +108,8 @@ export async function stuurVraag(interaction, { type, speler, variant, vraag = n
     game.saveSessieCache(sessieId);
   }
 
-  const embed = buildVraagEmbed(type, variant, vraag.tekst, speler.naam, guildId, sessieId);
+  const teller = berekenTeller(guildId, interaction.channelId, type, sessieId, vraag);
+  const embed = buildVraagEmbed(type, variant, vraag.tekst, speler.naam, teller);
   const components = [embeds.buildActieButtons(type, speler.id)];
 
   const inst = game.dbGetInstellingen(guildId);
