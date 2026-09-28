@@ -369,6 +369,12 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `M` **GitHub Actions** (v1.10.0)
   `.github/workflows/docker.yml`: controle bij elke push en PR, image bouwen en pushen bij een nieuwe `VERSION` op `main`. `build-and-push.sh` is nu een noodoptie. Echte tests (`node:test`) komen er later bij.
 
+- [ ] `S` **Actions bijwerken naar Node 24**
+  GitHub waarschuwt dat `actions/checkout@v4` en `actions/setup-node@v4` op het verouderde Node 20 draaien (nu nog geforceerd naar Node 24). Overstappen op `@v5`, en de andere `docker/*`-actions controleren op nieuwere versies. `ubuntu-latest` gaat vanaf 19 oktober 2026 naar Ubuntu 26; waarschijnlijk geen gevolgen, wel even controleren.
+
+- [ ] `S` **GitHub Release bij een nieuwe versie**
+  De workflow maakt nu alleen de git-tag `v<versie>` (en daarmee de automatische broncode-zip onder *Tags*). Een echte GitHub Release met de wijzigingen uit het plan of de commit maakt de versiegeschiedenis leesbaarder. Kan met `gh release create` in de job `release`.
+
 - [ ] `M` **Database-back-ups**
   Automatisch met `db.backup()` van better-sqlite3 naar een map in het volume, met een maximum aantal kopieën.
 
