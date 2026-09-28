@@ -34,7 +34,9 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `admin/src/components/Layout.jsx` — navigatie, serverkeuze, taalknop; pagina "Servers" alleen voor superadmins
 - `admin/src/pages/` — `Login`, `Vragen`, `Nooit`, `Sessies`, `Statistieken`, `Ranglijst`, `Instellingen`, `Configuratie`, `Servers`
 - `admin/src/i18n/` — `nl.js` en `en.js`, dezelfde sleutels
-- `Dockerfile`, `build-and-push.sh`, `config.json`
+- `Dockerfile`, `.dockerignore`, `build-and-push.sh` (noodoptie), `config.json`
+- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`)
+- `package-lock.json`, `admin/package-lock.json` — lock files, altijd meecommitten
 
 Werk deze lijst bij zodra er bestanden bijkomen.
 
@@ -143,21 +145,23 @@ In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>
 7. **Aan het eind van een fase:**
    - Werk de "Klaar als"-checklist af.
    - Bouw het panel (`cd admin && npm run build`) als er iets in `admin/` is veranderd, en controleer dat er geen fouten zijn.
-   - Werk `VERSION` en `package.json` bij (semantic versioning: PATCH = fix, MINOR = feature, MAJOR = herstructurering).
+   - Werk `VERSION` en `package.json` alleen bij in de laatste fase van een versie (semantic versioning: PATCH = fix, MINOR = feature, MAJOR = herstructurering). Een nieuwe `VERSION` op `main` start de build van het image.
    - Werk `README.md` bij bij inhoudelijke wijzigingen (functies, commands, instellingen, routes, rechten, omgevingsvariabelen, deployment).
    - Werk `BACKLOG.md` bij: vink meegenomen items af (ook dubbele items elders in de backlog), voeg nieuwe items toe, en haal een focus-release weg zodra al zijn items zijn uitgebracht.
    - Werk dit bestand bij als structuur, tabellen, instellingen, commands, knoppen, routes of omgevingsvariabelen veranderen.
-   - Maak **één commit** met de boodschap `v<versie> — <korte omschrijving>`, bijv. `v1.9.3 — configuratie alleen voor superadmins`, en **push** naar GitHub.
+   - Maak **één commit** met de boodschap `v<versie> — <korte omschrijving>`, bijv. `v1.9.3 — configuratie alleen voor superadmins`, en **push** naar GitHub. Commits van tussenliggende fases heten `v<versie> (fase N/M) — <omschrijving>`.
    - Geef een **samenvatting**: wat er is gebouwd, hoe Hendrie het test (concrete stappen in Discord en het panel), en wat openstaat of is afgeweken van het plan.
-8. **Bouw en push het image met `build-and-push.sh` pas als alles gecommit en gepusht is**, zodat de versie van het image altijd overeenkomt met GitHub.
+8. **Het image wordt gebouwd door GitHub Actions** (`.github/workflows/docker.yml`) zodra een nieuwe `VERSION` op `main` staat. Controleer na de push onder Actions of de workflow groen is en meld het resultaat in de samenvatting. `build-and-push.sh` is alleen een noodoptie als Actions niet werkt, en dan pas als alles gecommit en gepusht is.
 
 ## Commando's
 Vul deze aan zodra er nieuwe bijkomen.
 ```bash
-npm install                     # dependencies bot
-node index.js                   # lokaal starten (leest .env via dotenv; database in ./data)
-cd admin && npm install         # dependencies panel
+npm ci                          # dependencies bot (volgens package-lock.json)
+cd admin && npm ci              # dependencies panel (volgens admin/package-lock.json)
+npm install <package>           # alleen bij toevoegen/bijwerken van een package; lock file meecommitten
+cd admin && npm run build       # panel bouwen naar admin/dist (niet in git; nodig vóór node index.js)
+node index.js                   # lokaal starten (leest .env via dotenv; database in ./data; vereist gebouwd panel)
 cd admin && npm run dev         # panel lokaal op de Vite-devserver, /api en /auth gaan naar poort 3001
-cd admin && npm run build       # panel bouwen naar admin/dist
-./build-and-push.sh             # image bouwen en pushen naar GHCR (tag uit package.json + latest)
+gh run list --workflow docker.yml   # status van de image-builds (als gh beschikbaar is)
+./build-and-push.sh             # noodoptie: image bouwen en pushen naar GHCR (tag uit VERSION + latest)
 ```

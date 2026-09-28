@@ -1,0 +1,130 @@
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Bouw opnieuw, ook als de tag al bestaat'
+        type: boolean
+        default: false
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/hendriebuilds/wod
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.versie.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: VERSION gelijk aan package.json
+        id: versie
+        run: |
+          V=$(tr -d '[:space:]' < VERSION)
+          P=$(node -p "require('./package.json').version")
+          echo "VERSION=$V, package.json=$P"
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::VERSION is geen geldig versienummer: '$V'"; exit 1
+          fi
+          if [ "$V" != "$P" ]; then
+            echo "::error::VERSION ($V) en package.json ($P) verschillen"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Syntaxcontrole bot
+        run: |
+          node --check index.js
+          find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Panel bouwen
+        working-directory: admin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+  release:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # git-tag aanmaken
+      packages: write     # pushen naar GHCR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags ophalen
+
+      - name: Moet er gebouwd worden?
+        id: nodig
+        env:
+          V: ${{ needs.check.outputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            if [ "$FORCE" = "true" ]; then
+              echo "Tag v$V bestaat, maar force staat aan: opnieuw bouwen."
+              echo "bouwen=true" >> "$GITHUB_OUTPUT"
+              echo "tag=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Tag v$V bestaat al: niets te bouwen."
+              echo "bouwen=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Nieuwe versie v$V: bouwen."
+            echo "bouwen=true" >> "$GITHUB_OUTPUT"
+            echo "tag=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.nodig.outputs.bouwen == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.nodig.outputs.bouwen == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        if: steps.nodig.outputs.bouwen == 'true'
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.check.outputs.version }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ needs.check.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Git-tag aanmaken
+        if: steps.nodig.outputs.tag == 'true'
+        env:
+          V: ${{ needs.check.outputs.version }}
+        run: |
+          git tag "v$V" "$GITHUB_SHA"
+          git push origin "v$V"
+
+      - name: Samenvatting
+        if: steps.nodig.outputs.bouwen == 'true'
+        run: |
+          echo "### 🐳 ${IMAGE}:${{ needs.check.outputs.version }} gepusht (ook :latest)" >> "$GITHUB_STEP_SUMMARY"

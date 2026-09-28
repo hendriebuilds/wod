@@ -25,7 +25,3 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
-
-# Lock files (optioneel — verwijder regel als je ze wél wilt tracken)
-package-lock.json
-admin/package-lock.json

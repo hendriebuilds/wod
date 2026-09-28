@@ -66,7 +66,7 @@ Staat in de code, maar de versie per item is niet meer bekend.
 
 Suggesties om items te bundelen. Vrij te husselen.
 
-- **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `.dockerignore`, `admin/node_modules` en `admin/dist` uit git, lock files, `config.json` als volume
+- **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `config.json` als volume
 - **Categorieën per kanaal 2.0:** alles uit 🔞
 - **Punten eerlijk:** farmen onmogelijk, alleen de speler aan de beurt, achievements rechtgezet, levelnamen in het panel
 - **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen
@@ -325,15 +325,15 @@ Suggesties om items te bundelen. Vrij te husselen.
 ## ⚙️ Technisch & Infra
 
 - [ ] `S` **`build-and-push.sh` volgens de standaard**
-  `VERSION` bestaat sinds v1.9.3, maar het script leest de versie nog uit `package.json`. Versie uit `VERSION`, en het script stopt (met een melding) als de repo niet schoon is, er ongepushte commits zijn of `VERSION` en `package.json` verschillen. Zoals `build-push.sh` van de Hendriebuilds-bot.
+  Sinds v1.10.0 (fase 1) een noodoptie die de versie uit `VERSION` leest en stopt als `VERSION` en `package.json` verschillen. Nog open: stoppen (met een melding) als de repo niet schoon is of er ongepushte commits zijn. Zoals `build-push.sh` van de Hendriebuilds-bot.
 
-- [ ] `S` **`dockerignore` heet geen `.dockerignore`**
-  Het bestand mist de punt en wordt dus niet gebruikt. Daardoor gaat `admin/node_modules` van je eigen machine mee in de build van het panel. Hernoemen en `.env*`, `data/` en `*.db` toevoegen.
+- [x] `S` **`.dockerignore` aanvullen** (v1.10.0)
+  Het bestand heette al `.dockerignore`; aangevuld met `.git`, `.github`, `.env*`, `data`, `*.db*`, `updateplannen` en `errorcodes`.
 
-- [ ] `S` **`admin/node_modules` en `admin/dist` uit git**
+- [x] `S` **`admin/node_modules` en `admin/dist` uit git** (v1.10.0)
   Beide staan in `.gitignore` maar zijn toch gecommit (`git rm -r --cached`). Het image bouwt het panel zelf.
 
-- [ ] `S` **`package-lock.json` wél committen**
+- [x] `S` **`package-lock.json` wél committen** (v1.10.0)
   Beide lock files staan in `.gitignore`. Zonder lock file installeert de Docker-build telkens andere versies. Lock files committen en in de Dockerfile `npm ci` gebruiken.
 
 - [ ] `S` **`config.json` buiten het image**
@@ -366,8 +366,8 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `M` **Tests met `node:test`**
   Geen extra package nodig. Eerst `getVraag()` (categorieën, 18+), `voegPuntenToe()`/`checkAchievements()`, CSV-import en de toegangsregels van de API.
 
-- [ ] `M` **GitHub Actions**
-  Tests bij elke push, image bouwen en pushen bij een versie-tag. Kan `build-and-push.sh` vervangen.
+- [x] `M` **GitHub Actions** (v1.10.0)
+  `.github/workflows/docker.yml`: controle bij elke push en PR, image bouwen en pushen bij een nieuwe `VERSION` op `main`. `build-and-push.sh` is nu een noodoptie. Echte tests (`node:test`) komen er later bij.
 
 - [ ] `M` **Database-back-ups**
   Automatisch met `db.backup()` van better-sqlite3 naar een map in het volume, met een maximum aantal kopieën.

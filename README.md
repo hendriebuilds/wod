@@ -206,14 +206,20 @@ Het panel controleert elke minuut opnieuw of je nog *Server beheren* hebt op de 
 ## Lokaal ontwikkelen
 
 ```bash
-npm install
+npm ci
 cp .env.example .env        # zodra .env.example bestaat; anders zelf .env aanmaken
-node index.js               # bot + API op poort 3001, database in ./data
 
 cd admin
-npm install
-npm run dev                 # panel met hot reload; /api en /auth gaan naar poort 3001
+npm ci
+npm run build               # nodig: node index.js serveert admin/dist, en die staat niet in git
+cd ..
+
+node index.js               # bot + API op poort 3001, database in ./data
+
+cd admin && npm run dev     # optioneel: panel met hot reload; /api en /auth gaan naar poort 3001
 ```
+
+Gebruik `npm ci`, zodat je precies de versies uit de lock files krijgt. Alleen bij het toevoegen of bijwerken van een package gebruik je `npm install`; commit dan ook de bijgewerkte `package-lock.json`.
 
 Gebruik bij voorkeur een aparte testbot en een testserver, zodat je de echte servers niet raakt. Voor de login lokaal: redirect `http://localhost:3001/auth/callback` in de Developer Portal en in `config.json`.
 
@@ -221,12 +227,16 @@ Gebruik bij voorkeur een aparte testbot en een testserver, zodat je de echte ser
 
 ## Bouwen en publiceren
 
-```bash
-./build-and-push.sh
-```
+GitHub Actions bouwt het image (`.github/workflows/docker.yml`):
 
-Bouwt het image met de versie uit `package.json` en pusht die tag en `:latest` naar GHCR. **Commit en push eerst naar GitHub**, zodat image en repo altijd dezelfde versie hebben.
+- **Bij elke push en pull request** controleert de job `check` of `VERSION` en `package.json` gelijk zijn, of alle JS-bestanden geldig zijn en of het panel bouwt.
+- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Staat de tag er al, dan wordt er niets gebouwd.
+- **Opnieuw bouwen** van dezelfde versie: *Actions* → *Docker image* → *Run workflow* met `force` aan.
+
+Voorwaarde: het package `wod` op GHCR geeft de repo schrijfrechten (*Package settings* → *Manage Actions access* → repository `hendriebuilds/wod` met rol **Write**).
+
+`./build-and-push.sh` is een noodoptie voor als Actions niet werkt. Het leest de versie uit `VERSION` en stopt als die afwijkt van `package.json`. **Commit en push eerst naar GitHub**, zodat image en repo altijd dezelfde versie hebben.
 
 ## Versiebeheer
 
-Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Commit message: `v<versie> — <korte omschrijving>`. Zie `BACKLOG.md` voor wat er per versie is uitgebracht en wat nog open staat.
+Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Een nieuwe `VERSION` op `main` start de build van het image. Commit message: `v<versie> — <korte omschrijving>`; tussenliggende fases heten `v<versie> (fase N/M) — <omschrijving>`. Zie `BACKLOG.md` voor wat er per versie is uitgebracht en wat nog open staat.
