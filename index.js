@@ -119,5 +119,11 @@ client.on('interactionCreate', async (interaction) => {
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 
+try {
+  game.migreerAchievements();
+} catch (err) {
+  console.error('Migratie van achievements mislukt:', err);
+}
+
 startServer();
 client.login(process.env.DISCORD_TOKEN);

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { ChannelType, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import { db, stmts, dbGetInstellingen } from './database.js';
-import { sessieCache, getSessieCache, saveSessieCache } from './game.js';
+import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo } from './game.js';
 import { config, slaConfigOp, isSuperAdmin } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -332,7 +332,7 @@ app.post('/api/vragen/import', requireAuth, requireGuild, express.text({ type: '
 
 app.get('/api/ranglijst', requireAuth, requireGuild, (req, res) => {
   const rows = stmts.getRanglijst.all(req.session.activeGuildId);
-  res.json(rows);
+  res.json(rows.map(row => ({ ...row, level: getLevelInfo(row.punten).level })));
 });
 
 // ── Statistieken API ──

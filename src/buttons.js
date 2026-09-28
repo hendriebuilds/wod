@@ -1,22 +1,16 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import * as embeds from './embeds.js';
 import { isGuildAdmin, GEEN_RECHTEN } from './permissions.js';
+import { achievementEmoji } from './game.js';
 import { parseRondeKnop, claimBericht, geefBerichtVrij, kiesVraag, stuurVraag, geenVraagMelding } from './ronde.js';
 
 // Beveiligde knoppen (alleen Server beheren), gecontroleerd in handleButton:
 // - verwijder_ja_<vraagId>  (uit /verwijder)
 // verwijder_nee (annuleren) mag iedereen.
 
-const ACHIEVEMENT_EMOJIS = {
-  'Eerste stap': '👣', 'Durfal': '💪', 'Onthullingsmaster': '🔓',
-  'Legenda': '👑', 'Reroll addict': '🎲', 'Lafaard': '😅',
-  'Op dreef': '🔥', 'Lovebird': '💑', 'Zelfinzicht': '🧠',
-};
-
 async function notifyAchievements(interaction, achievements) {
   for (const naam of achievements) {
-    const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
-    await interaction.followUp({ content: `${emoji} **Achievement behaald:** ${naam}!`, ephemeral: true });
+    await interaction.followUp({ content: `${achievementEmoji(naam)} **Achievement behaald:** ${naam}!`, ephemeral: true });
   }
 }
 
@@ -105,12 +99,15 @@ async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
     await geefPunten(interaction, game, speler, ronde.actie === 'reroll' ? -5 : -7);
     if (ronde.actie === 'reroll') stmts.incrReroll.run(guildId, speler.id);
     else stmts.incrPassen.run(guildId, speler.id);
+    // Na de teller: "Reroll addict" en "Schijterd" direct bij de juiste klik
+    await notifyAchievements(interaction, game.checkAchievements(guildId, speler.id));
     return;
   }
 
   // Nieuwe ronde: de speler heeft geantwoord, de beurt schuift door
   const { achievements, levelVoor, levelNa, levelInfo } = game.voegPuntenToe(guildId, speler.id, speler.naam, 5);
   stmts.incrRondes.run(guildId, speler.id);
+  achievements.push(...game.checkAchievements(guildId, speler.id)); // "Op dreef" na de teller
   await interaction.update({ components: [] });
   const volgende = game.getBeurten(guildId).lijst.length > 0 ? game.advanceerBeurt(guildId) : null;
   await interaction.followUp({
@@ -167,34 +164,19 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       });
       return;
     }
-    if (actie === 'wel') {
-      if (sessie.wel.has(userId)) { sessie.wel.delete(userId); }
-      else {
-        if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          const { achievements: achNooit, levelVoor: lvVoor1, levelNa: lvNa1, levelInfo: lvInfo1 } = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
-          await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size + 1, sessie.nooit.size)] });
-          sessie.wel.set(userId, naam); sessie.nooit.delete(userId);
-          if (lvNa1 > lvVoor1) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, lvInfo1);
-          await notifyAchievements(interaction, achNooit);
-          return;
-        }
-        sessie.wel.set(userId, naam); sessie.nooit.delete(userId);
-      }
-    } else {
-      if (sessie.nooit.has(userId)) { sessie.nooit.delete(userId); }
-      else {
-        if (!sessie.wel.has(userId) && !sessie.nooit.has(userId)) {
-          const { achievements: achNooit, levelVoor: lvVoor2, levelNa: lvNa2, levelInfo: lvInfo2 } = game.voegPuntenToe(guildId, interaction.user.id, naam, 3);
-          await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size, sessie.nooit.size + 1)] });
-          sessie.nooit.set(userId, naam); sessie.wel.delete(userId);
-          if (lvNa2 > lvVoor2) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, lvInfo2);
-          await notifyAchievements(interaction, achNooit);
-          return;
-        }
-        sessie.nooit.set(userId, naam); sessie.wel.delete(userId);
-      }
-    }
+    if (actie !== 'wel' && actie !== 'nooit') { await interaction.reply({ content: '❌ Ongeldige knop.', ephemeral: true }); return; }
+    // Stemmen, uitzetten en wisselen kan onbeperkt; punten alleen voor de eerste stem.
+    const gekozen = sessie[actie];
+    const ander = actie === 'wel' ? sessie.nooit : sessie.wel;
+    if (gekozen.has(userId)) gekozen.delete(userId);
+    else { gekozen.set(userId, naam); ander.delete(userId); }
     await interaction.update({ components: [embeds.buildNooitButtons(sessionId, sessie.wel.size, sessie.nooit.size)] });
+    if (gekozen.has(userId) && !sessie.beloond.has(userId)) {
+      sessie.beloond.add(userId);
+      const { achievements, levelVoor, levelNa, levelInfo } = game.voegPuntenToe(guildId, userId, naam, 3);
+      if (levelNa > levelVoor) await stuurLevelUpNotificatie(interaction, interaction.member ?? interaction.user, levelInfo);
+      await notifyAchievements(interaction, achievements);
+    }
     return;
   }
 
@@ -250,24 +232,27 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
         game.relatieSpelers.delete(sessie.speler1.id);
         game.relatieSpelers.delete(sessie.speler2.id);
         game.relatieSessies.delete(sessionId);
-        const { achievements: achRelatie1, levelVoor: lvVoor3, levelNa: lvNa3, levelInfo: lvInfo3 } = game.voegPuntenToe(guildId, sessie.speler1.id, sessie.speler1.naam, 15);
-        const { achievements: achRelatie2, levelVoor: lvVoor4, levelNa: lvNa4, levelInfo: lvInfo4 } = game.voegPuntenToe(guildId, sessie.speler2.id, sessie.speler2.naam, 15);
-        const rLove1 = stmts.insertAchievement.run(guildId, sessie.speler1.id, 'Lovebird');
-        const rLove2 = stmts.insertAchievement.run(guildId, sessie.speler2.id, 'Lovebird');
-        if (rLove1.changes > 0) achRelatie1.push('Lovebird');
-        if (rLove2.changes > 0) achRelatie2.push('Lovebird');
+        // Punten één keer per paar per dag (Europe/Amsterdam); Lovebird altijd.
+        const [spelerA, spelerB] = [sessie.speler1.id, sessie.speler2.id].sort();
+        const datum = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam' }).format(new Date());
+        const puntenGegeven = stmts.insertRelatietestPunten.run(guildId, spelerA, spelerB, datum).changes === 1;
+        const uitslagen = [sessie.speler1, sessie.speler2].map(s => {
+          const r = puntenGegeven
+            ? game.voegPuntenToe(guildId, s.id, s.naam, 15)
+            : { achievements: [], levelVoor: 0, levelNa: 0 };
+          if (stmts.insertAchievement.run(guildId, s.id, 'Lovebird').changes > 0) r.achievements.push('Lovebird');
+          return { speler: s, ...r };
+        });
         const kanaal = client.channels.cache.get(sessie.channelId);
         if (kanaal) {
-          await kanaal.send({ embeds: [embeds.buildRelatieResultaatEmbed(sessie)] });
-          if (lvNa3 > lvVoor3) await kanaal.send({ embeds: [embeds.buildLevelUpEmbed(await client.users.fetch(sessie.speler1.id), lvInfo3)] });
-          if (lvNa4 > lvVoor4) await kanaal.send({ embeds: [embeds.buildLevelUpEmbed(await client.users.fetch(sessie.speler2.id), lvInfo4)] });
-          for (const naam of achRelatie1) {
-            const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
-            await kanaal.send({ content: `${emoji} **Achievement behaald voor ${sessie.speler1.naam}:** ${naam}!` });
+          await kanaal.send({ embeds: [embeds.buildRelatieResultaatEmbed(sessie, puntenGegeven)] });
+          for (const u of uitslagen) {
+            if (u.levelNa > u.levelVoor) await kanaal.send({ embeds: [embeds.buildLevelUpEmbed(await client.users.fetch(u.speler.id), u.levelInfo)] });
           }
-          for (const naam of achRelatie2) {
-            const emoji = ACHIEVEMENT_EMOJIS[naam] ?? '🏆';
-            await kanaal.send({ content: `${emoji} **Achievement behaald voor ${sessie.speler2.naam}:** ${naam}!` });
+          for (const u of uitslagen) {
+            for (const naam of u.achievements) {
+              await kanaal.send({ content: `${achievementEmoji(naam)} **Achievement behaald voor ${u.speler.naam}:** ${naam}!` });
+            }
           }
         }
       }
