@@ -73,7 +73,7 @@ async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
     }
     if (!vraag) {
       geefBerichtVrij(messageId);
-      await interaction.reply({ content: geenVraagMelding(type), ephemeral: true });
+      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), ephemeral: true });
       return;
     }
     const update = { components: [embeds.buildDisabledKiesButtons(speler.id)] };
@@ -89,7 +89,7 @@ async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
     const vraag = kiesVraag(guildId, channelId, type);
     if (!vraag) {
       geefBerichtVrij(messageId);
-      await interaction.reply({ content: geenVraagMelding(type), ephemeral: true });
+      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), ephemeral: true });
       return;
     }
     if (ronde.actie === 'reroll') {

@@ -21,6 +21,14 @@ export async function execute(interaction, { stmts, game }) {
       return;
     }
     vraag = vragen[nummer - 1];
+    const catFilter = game.getCategorieFilter(guildId, interaction.channelId);
+    if (catFilter && vraag.categorie !== catFilter) {
+      await interaction.reply({
+        content: `❌ Vraag ${nummer} hoort bij ${game.categorieLabel(vraag.categorie)}. In dit kanaal kunnen alleen vragen uit ${game.categorieLabel(catFilter)}.`,
+        ephemeral: true,
+      });
+      return;
+    }
     const sessieId = game.getSessieId(guildId, interaction.channelId);
     game.getSessieCache(sessieId).gebruikteWaarheid.add(vraag.id);
     game.saveSessieCache(sessieId);

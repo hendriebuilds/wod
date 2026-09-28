@@ -101,7 +101,14 @@ docker start wod
 
 ### Categorieën en 18+
 
-Elke vraag heeft een categorie: `algemeen`, `vrienden`, `koppels`, `feest` of `18+`. Met **Categorieën per chat** (Instellingen) koppel je een kanaal aan één categorie. In dat kanaal verschijnen dan alleen vragen uit die categorie.
+Elke vraag heeft een categorie: `algemeen`, `vrienden`, `koppels`, `feest` of `18+`. Met **Categorieën per chat** (Instellingen) koppel je een kanaal aan één categorie. In dat kanaal verschijnen dan alleen vragen uit die categorie, zonder uitzonderingen:
+
+- Zijn er in die categorie geen vragen van het gekozen type, dan krijg je een melding (bijv. "Geen doe-opdrachten in de categorie 👫 Vrienden van dit kanaal") in plaats van een vraag uit een andere categorie.
+- Zijn alle vragen uit de categorie gehad, dan begint de categorie opnieuw.
+- `/waarheid nummer:` en `/doen nummer:` gebruiken de nummers uit `/lijst`, maar weigeren in een gekoppeld kanaal een vraag uit een andere categorie.
+- Dit geldt ook in DM-modus.
+
+Elke vraag toont zijn categorie in de footer, bijv. `🔞 18+ • 3/40 vragen gehad`. Bij 18+ staat 🔞 ook in de titel. In een gekoppeld kanaal telt de teller alleen de vragen uit die categorie.
 
 Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrepen. Wil je 18+ apart houden, koppel dan een eigen kanaal aan `18+` en de andere kanalen aan de overige categorieën.
 
