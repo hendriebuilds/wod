@@ -13,7 +13,7 @@ export async function execute(interaction, { game, embeds }) {
   const stelling = invoer?.trim() || getRandomNooit(interaction.guildId);
   const sessionId = interaction.id;
   const timeout = setTimeout(() => game.nooitStemmen.delete(sessionId), 2 * 60 * 60 * 1000);
-  game.nooitStemmen.set(sessionId, { stelling, wel: new Map(), nooit: new Map(), timeout });
+  game.nooitStemmen.set(sessionId, { stelling, wel: new Map(), nooit: new Map(), beloond: new Set(), timeout });
   await interaction.reply({
     embeds: [embeds.buildNooitEmbed(stelling, new Map(), new Map())],
     components: [embeds.buildNooitButtons(sessionId, 0, 0)],

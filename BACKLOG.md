@@ -86,13 +86,13 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Cooldown laat de interactie hangen**
   Bij een cooldown doet `handleButton` niets, dus Discord toont "Deze interactie is mislukt". Een korte ephemeral melding of `deferUpdate()`. Daarnaast geldt de cooldown nu per gebruiker over alle servers heen; sleutel `guildId:userId`.
 
-- [ ] `S` **Achievements kloppen niet meer met de levels**
+- [x] `S` **Achievements kloppen niet meer met de levels** (v1.10.0; "Op dreef" heet nu "3 rondes voltooid")
   Sinds v1.9.0 zijn er 8 levels, maar `checkAchievements()` kent "Durfal" toe bij level 2 (nu Deelnemer) en "Legenda" bij level 4 (nu Avonturier). "Onthullingsmaster" (level 3) staat in `/achievements` maar wordt nooit toegekend. "Op dreef" zegt "3 rondes op één avond" maar telt alle rondes ooit. Achievements rechtzetten, zonder behaalde achievements af te pakken.
 
-- [ ] `S` **Achievements op twee plekken gedefinieerd**
+- [x] `S` **Achievements op twee plekken gedefinieerd** (v1.10.0)
   De voorwaarden staan in `src/game.js`, de lijst met emoji en beschrijving in `src/embeds.js` en nog een emoji-lijst in `src/buttons.js`. Eén definitie in `game.js` waar de rest uit leest.
 
-- [ ] `S` **Panel toont oude levelnamen op de ranglijst**
+- [x] `S` **Panel toont oude levelnamen op de ranglijst** (v1.10.0)
   `ranglijst.levelNamen` in `nl.js` en `en.js` heeft nog de 4 levels van vóór v1.9.0. Level 5 en hoger krijgen geen naam, en level 2 t/m 4 een verkeerde (Lv.4 toont "Legenda" in plaats van "Avonturier"). Discord klopt wel, omdat de bot `LEVELS` uit `src/game.js` gebruikt. `GET /api/ranglijst` rekent het level uit met `getLevelInfo(punten)` en stuurt het levelnummer mee. De lijst in beide vertaalbestanden krijgt alle 8 levels. EN: Coward, Participant, Daredevil, Adventurer, Revelation, Seducer, Champion, Legend.
 
 - [ ] `S` **Migratie van `user_levels` in de verkeerde volgorde**
@@ -119,7 +119,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Veel dubbele code in knoppen en commands** (v1.10.0)
   De afhandeling van waarheid/doen (vraag kiezen, teller ophogen, DM of kanaal, knoppen) staat bijna gelijk op tien plekken in `buttons.js`, `waarheid.js` en `doen.js`. Eén functie `stuurVraag(interaction, type, opties)`. Maakt de 18+- en punten-fixes veel kleiner.
 
-- [ ] `S` **Achievements voor tellers komen een actie te laat**
+- [x] `S` **Achievements voor tellers komen een actie te laat** (v1.10.0; na de teller nog een keer `checkAchievements()`)
   Bij Reroll, Passen en Nieuwe ronde roept `voegPuntenToe()` eerst `checkAchievements()` aan en gaat de teller (`incrReroll`, `incrPassen`, `incrRondes`) pas daarna omhoog. "Op dreef" komt dus pas bij de 4e ronde, "Reroll addict" bij de 11e reroll. De tellers zijn een `UPDATE`, dus ze werken pas als de rij bestaat. Oplossen met een upsert voor de tellers en die vóór de punten uitvoeren. Past bij fase 4 van v1.10.0 (achievements).
 
 - [ ] `S` **Oude teksten**
@@ -211,16 +211,16 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 ## 👤 Punten, profielen & achievements
 
-- [ ] `S` ⚠️ **Punten farmen bij `/nooit`**
+- [x] `S` ⚠️ **Punten farmen bij `/nooit`** (v1.10.0)
   Stem aan, stem uit, stem weer aan: elke keer +3. Bijhouden wie al punten heeft gekregen voor die stemming.
 
 - [x] `M` **Alleen de speler aan de beurt mag klikken** (v1.10.0)
   Iedereen kan op Waarheid/Doen, Reroll, Passen en Nieuwe ronde klikken, en de punten gaan naar wie klikt. Spam op Nieuwe ronde en `/wod` levert telkens +5 op. De speler aan de beurt (of die bij `/wod` gekozen is) opslaan bij het bericht en andere klikkers een ephemeral melding geven. Punten voor `/wod` pas geven als de ronde echt gespeeld is.
 
-- [ ] `M` **`/strafpunten`**
+- [x] `M` **`/strafpunten`** (v1.10.0: alleen *Server beheren*, 1–100, reden verplicht, nooit onder 0)
   Command waarmee een admin (of de groep) punten aftrekt als straf. Eerder besproken maar niet vastgelegd: wie het mag gebruiken, syntax (`/strafpunten speler aantal reden`), of de reden verplicht is, en of punten onder 0 mogen (nu nooit).
 
-- [ ] `S` **Relatietest niet te farmen**
+- [x] `S` **Relatietest niet te farmen** (v1.10.0: één keer per paar per dag)
   +15 voor beide spelers, zo vaak als je wilt. Beperken tot bijv. één keer per paar per dag.
 
 - [ ] `S` **Ranglijst langer dan top 10**

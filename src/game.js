@@ -278,6 +278,27 @@ export function getLevelInfo(punten) {
 
 // ─── Punten & achievements ─────────────────────────────────────────────────────
 
+// Enige definitie van de achievements. Met minLevel: toegekend vanaf dat level
+// (uit de punten berekend). Zonder check en minLevel: toegekend in buttons.js.
+export const ACHIEVEMENTS = [
+  { id: 'Eerste stap',       emoji: '👣', beschrijving: 'Voor het eerst punten ontvangen',          check: r => r.punten !== null },
+  { id: 'Durfal',            emoji: '💪', beschrijving: 'Level 3 (Durfal) bereikt',                  minLevel: 3 },
+  { id: 'Onthullingsmaster', emoji: '🔓', beschrijving: 'Level 5 (Onthulling) bereikt',              minLevel: 5 },
+  { id: 'Legenda',           emoji: '👑', beschrijving: 'Level 8 (Legenda) bereikt',                 minLevel: 8 },
+  { id: 'Reroll addict',     emoji: '🎲', beschrijving: '10x gererold',                              check: r => (r.reroll_teller ?? 0) >= 10 },
+  { id: 'Schijterd',         emoji: '😅', beschrijving: '5x gepast',                                 check: r => (r.passen_teller ?? 0) >= 5 },
+  { id: 'Op dreef',          emoji: '🔥', beschrijving: '3 rondes voltooid',                         check: r => (r.rondes_teller ?? 0) >= 3 },
+  { id: 'Lovebird',          emoji: '💑', beschrijving: '/relatietest voltooid' },
+  { id: 'Zelfinzicht',       emoji: '🧠', beschrijving: '/liefdestaal of /persoonlijkheid voltooid' },
+];
+
+export function achievementEmoji(id) {
+  return ACHIEVEMENTS.find(a => a.id === id)?.emoji ?? '🏆';
+}
+
+// Punten gaan nooit onder 0. effectiefDelta is wat er werkelijk bij of af ging.
+// Achievements worden alleen gecontroleerd bij punten erbij: een aftrek levert
+// nooit een achievement op.
 export function voegPuntenToe(guildId, userId, userNaam, delta) {
   const huidig = stmts.getUserLevel.get(guildId, userId);
   const huidigePunten = huidig?.punten ?? 0;
@@ -286,30 +307,55 @@ export function voegPuntenToe(guildId, userId, userNaam, delta) {
   const effectiefDelta = nieuwePunten - huidigePunten;
   const nieuwLevel = getLevelInfo(nieuwePunten);
   stmts.upsertUserLevel.run(guildId, userId, userNaam, effectiefDelta, nieuwLevel.level);
-  const achievements = checkAchievements(guildId, userId);
-  return { achievements, levelVoor, levelNa: nieuwLevel.level, levelInfo: nieuwLevel };
+  const achievements = delta > 0 ? checkAchievements(guildId, userId) : [];
+  return { achievements, levelVoor, levelNa: nieuwLevel.level, levelInfo: nieuwLevel, puntenNa: nieuwePunten, effectiefDelta };
 }
 
 export function checkAchievements(guildId, userId) {
   const row = stmts.getUserLevel.get(guildId, userId);
   if (!row) return [];
+  const level = getLevelInfo(row.punten).level;
   const behaald = new Set(stmts.getUserAchievements.all(guildId, userId).map(a => a.achievement));
   const nieuw = [];
 
-  const grant = (naam) => {
-    if (!behaald.has(naam)) {
-      stmts.insertAchievement.run(guildId, userId, naam);
-      behaald.add(naam);
-      nieuw.push(naam);
-    }
-  };
-
-  if (row.punten !== null) grant('Eerste stap');
-  if ((row.reroll_teller ?? 0) >= 10) grant('Reroll addict');
-  if ((row.passen_teller ?? 0) >= 5) grant('Lafaard');
-  if (row.level >= 2) grant('Durfal');
-  if ((row.rondes_teller ?? 0) >= 3) grant('Op dreef');
-  if (row.level >= 4) grant('Legenda');
+  for (const a of ACHIEVEMENTS) {
+    if (behaald.has(a.id)) continue;
+    const verdiend = a.minLevel ? level >= a.minLevel : a.check ? a.check(row) : false;
+    if (!verdiend) continue;
+    stmts.insertAchievement.run(guildId, userId, a.id);
+    nieuw.push(a.id);
+  }
 
   return nieuw;
+}
+
+// ─── Eenmalige migratie achievements (v1.10.0) ─────────────────────────────────
+// Hernoemt "Lafaard" naar "Schijterd", trekt de kolom level gelijk met de punten
+// en zet de level-achievements recht. Draait één keer (tabel migraties).
+
+const MIGRATIE_ACHIEVEMENTS = 'achievements_v1_10';
+
+export function migreerAchievements() {
+  if (stmts.getMigratie.get(MIGRATIE_ACHIEVEMENTS)) return;
+  const levelAchievements = ACHIEVEMENTS.filter(a => a.minLevel);
+
+  const resultaat = db.transaction(() => {
+    let toegekend = 0, ingetrokken = 0;
+    const hernoemd = stmts.hernoemAchievement.run('Schijterd', 'Lafaard').changes;
+    stmts.deleteAchievementAlle.run('Lafaard'); // alleen over als iemand beide al had
+
+    for (const row of stmts.getAlleUserLevels.all()) {
+      const lvl = getLevelInfo(row.punten).level;
+      if (row.level !== lvl) stmts.updateUserLevelKolom.run(lvl, row.guild_id, row.user_id);
+      for (const a of levelAchievements) {
+        if (lvl >= a.minLevel) toegekend += stmts.insertAchievement.run(row.guild_id, row.user_id, a.id).changes;
+        else ingetrokken += stmts.deleteAchievement.run(row.guild_id, row.user_id, a.id).changes;
+      }
+    }
+
+    stmts.insertMigratie.run(MIGRATIE_ACHIEVEMENTS);
+    return { toegekend, ingetrokken, hernoemd };
+  })();
+
+  console.log(`🏅 Achievements rechtgezet: ${resultaat.toegekend} toegekend, ${resultaat.ingetrokken} ingetrokken, ${resultaat.hernoemd} hernoemd.`);
 }

@@ -28,7 +28,7 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `src/ronde.js` — rondes: `stuurVraag()` (de enige plek die een waarheid/doen-embed met actieknoppen verstuurt, incl. DM-modus), `kiesVraag()`, `parseRondeKnop()`, `claimBericht()`/`geefBerichtVrij()` (één verwerking per bericht)
 - `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen; rondeknoppen in `handleRondeKnop()` (alleen de speler uit de custom ID)
 - `src/server.js` — Express-app: auth, alle `/api`-routes, statische bestanden van het panel
-- `src/commands/admin/` — `voeg-toe`, `verwijder`, `lijst`, `reload`, `reset`, `sessie`
+- `src/commands/admin/` — `voeg-toe`, `verwijder`, `lijst`, `reload`, `reset`, `sessie`, `strafpunten`
 - `src/commands/game/` — `wod`, `waarheid`, `doen`, `beurt`, `nooit`, `statistieken`, `profiel`, `ranglijst`, `achievements`
 - `src/commands/fun/` — `liefdestaal`, `persoonlijkheid`, `relatietest`
 - `admin/src/` — `main.jsx`, `App.jsx`, `LanguageContext.jsx` (`t()`, taal in `localStorage`), `api.js` (alle API-aanroepen), `App.css`
@@ -54,6 +54,9 @@ Alles behalve `bot_servers` heeft een `guild_id`.
 | `user_levels` | `punten`, `level`, `reroll_teller`, `passen_teller`, `rondes_teller` per speler per server |
 | `user_achievements` | behaalde achievements met `behaald_op` |
 | `bot_servers` | servers waar de bot in zit (naam, icoon, leden, eigenaar), voor de Servers-pagina |
+| `migraties` | eenmalige datamigraties die al zijn uitgevoerd (`naam`, bijv. `achievements_v1_10`) |
+| `relatietest_punten` | `(guild_id, speler_a, speler_b, datum)`: paar (laagste ID eerst) kreeg op die dag (Europe/Amsterdam) al punten |
+| `strafpunten` | `user_id`, `door_id`, werkelijk afgetrokken `aantal`, `reden`, `op`; voor een later auditlog |
 
 ### Instellingen per server (tabel `instellingen`, panel → Instellingen)
 | kolom | beschrijving | standaard |
@@ -76,7 +79,7 @@ Nieuwe knoppen hier toevoegen.
 
 ### Slash commands
 Globaal geregistreerd bij elke start (guild commands worden daarbij leeggemaakt).
-- **Admin** (`setDefaultMemberPermissions(ManageGuild)`): `/voeg-toe type tekst`, `/verwijder type nummer`, `/lijst [type]`, `/reload`, `/reset`, `/sessie starten|lijst|wisselen|pauzeren|hervatten|stoppen|info`
+- **Admin** (`setDefaultMemberPermissions(ManageGuild)`): `/voeg-toe type tekst`, `/verwijder type nummer`, `/lijst [type]`, `/reload`, `/reset`, `/sessie starten|lijst|wisselen|pauzeren|hervatten|stoppen|info`, `/strafpunten speler aantal reden`
 - **Spel:** `/wod [speler]`, `/waarheid [nummer]`, `/doen [nummer]`, `/beurt toevoegen|verwijder|lijst|reset|volgende` (`verwijder` en `reset` alleen met *Server beheren*), `/nooit [stelling]`, `/statistieken`, `/profiel [speler]`, `/ranglijst`, `/achievements`
 - **Fun:** `/liefdestaal`, `/persoonlijkheid`, `/relatietest speler`
 
@@ -88,10 +91,13 @@ Globaal geregistreerd bij elke start (guild commands worden daarbij leeggemaakt)
 | Nieuwe ronde (alleen de speler) | +5 |
 | Reroll (alleen de speler) | −5 |
 | Passen (alleen de speler) | −7 |
-| Stemmen bij `/nooit` | +3 |
-| `/relatietest` voltooid | +15 (beide spelers) |
+| Stemmen bij `/nooit` | +3, één keer per stemming (`beloond` in de stemming) |
+| `/relatietest` voltooid | +15 (beide spelers), één keer per paar per dag (`relatietest_punten`) |
+| `/strafpunten` (admin) | −1 t/m −100 |
 
-Punten gaan nooit onder 0. Reroll en Passen kosten alleen punten als er een nieuwe vraag is. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deelnemer 50 · Durfal 150 · Avonturier 350 · Onthulling 700 · Verleider 1200 · Kampioen 2000 · Legenda 3500. Achievements in `checkAchievements()` (`src/game.js`) en de lijst in `buildAchievementsEmbed()` (`src/embeds.js`).
+Punten gaan nooit onder 0. Reroll en Passen kosten alleen punten als er een nieuwe vraag is. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deelnemer 50 · Durfal 150 · Avonturier 350 · Onthulling 700 · Verleider 1200 · Kampioen 2000 · Legenda 3500. Achievements staan alleen in `ACHIEVEMENTS` (`src/game.js`), met `minLevel` (level uit de punten) of `check(row)`; `checkAchievements()`, `achievementEmoji()`, `buildAchievementsEmbed()` en `buttons.js` lezen daaruit. `voegPuntenToe()` controleert achievements alleen bij punten erbij en geeft `effectiefDelta` en `puntenNa` terug. Na een teller (`incrReroll/Passen/Rondes`) nog een keer `checkAchievements()`.
+
+Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `migraties` (bijv. `migreerAchievements()` in `src/game.js`, aangeroepen in `index.js`).
 
 ### Toegangsregel
 - **Panel:** bij login krijgt de sessie de servers waar de bot in zit én de gebruiker *Server beheren* (`0x20`) heeft. Superadmins (`SUPERADMIN_IDS`) krijgen alle servers. De actieve server staat in `req.session.activeGuildId`.

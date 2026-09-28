@@ -162,6 +162,7 @@ De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissi
 | `/reload` | Gebruikte vragen van de sessie in dit kanaal resetten |
 | `/reset` | Sessie in dit kanaal beëindigen |
 | `/sessie starten\|lijst\|wisselen\|pauzeren\|hervatten\|stoppen\|info` | Sessies beheren |
+| `/strafpunten speler aantal reden` | 1–100 punten aftrekken als straf; de bot plaatst een melding in het kanaal (zonder ping) |
 
 ---
 
@@ -173,8 +174,9 @@ De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissi
 | Ronde voltooien (Nieuwe ronde) | +5 |
 | Reroll | −5 |
 | Passen | −7 |
-| Stemmen bij `/nooit` | +3 |
-| `/relatietest` voltooien | +15 (beide spelers) |
+| Stemmen bij `/nooit` | +3, één keer per stemming |
+| `/relatietest` voltooien | +15 (beide spelers), één keer per paar per dag |
+| `/strafpunten` (admin) | −1 t/m −100 |
 
 Een ronde starten met `/wod` levert geen punten op. Alleen de speler van de ronde kan kiezen, rerollen, passen en een nieuwe ronde starten, en alleen die speler krijgt of verliest punten. Een gespeelde ronde levert netto +10 op. Reroll en Passen kosten alleen punten als er een nieuwe vraag is.
 
@@ -192,6 +194,22 @@ Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kan
 | 6 | Verleider | 1200–1999 |
 | 7 | Kampioen | 2000–3499 |
 | 8 | Legenda | 3500+ |
+
+### Achievements
+
+| Achievement | Hoe |
+|---|---|
+| 👣 Eerste stap | Voor het eerst punten ontvangen |
+| 💪 Durfal | Level 3 (Durfal) bereikt |
+| 🔓 Onthullingsmaster | Level 5 (Onthulling) bereikt |
+| 👑 Legenda | Level 8 (Legenda) bereikt |
+| 🎲 Reroll addict | 10x gererold |
+| 😅 Schijterd | 5x gepast |
+| 🔥 Op dreef | 3 rondes voltooid |
+| 💑 Lovebird | `/relatietest` voltooid |
+| 🧠 Zelfinzicht | `/liefdestaal` of `/persoonlijkheid` voltooid |
+
+Bij de update naar v1.10.0 zijn de achievements eenmalig rechtgezet: level-achievements passen nu bij de 8 levels (wie een level niet haalt, verliest dat achievement; wie het wel haalt, krijgt het alsnog), en "Lafaard" heet voortaan "Schijterd".
 
 ---
 

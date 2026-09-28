@@ -117,7 +117,7 @@ export default {
   'ranglijst.colPunten': 'Points',
   'ranglijst.colLevel': 'Level',
   'ranglijst.colAchievements': 'Achievements',
-  'ranglijst.levelNamen': ['', 'Coward', 'Daredevil', 'Revelation Master', 'Legend'],
+  'ranglijst.levelNamen': ['', 'Coward', 'Participant', 'Daredevil', 'Adventurer', 'Revelation', 'Seducer', 'Champion', 'Legend'],
 
   'instellingen.title': '⚙️ Settings',
   'instellingen.cooldown': 'Cooldown (milliseconds)',

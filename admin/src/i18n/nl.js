@@ -117,7 +117,7 @@ export default {
   'ranglijst.colPunten': 'Punten',
   'ranglijst.colLevel': 'Level',
   'ranglijst.colAchievements': 'Achievements',
-  'ranglijst.levelNamen': ['', 'Lafaard', 'Durfal', 'Onthullingsmaster', 'Legenda'],
+  'ranglijst.levelNamen': ['', 'Lafaard', 'Deelnemer', 'Durfal', 'Avonturier', 'Onthulling', 'Verleider', 'Kampioen', 'Legenda'],
 
   'instellingen.title': '⚙️ Instellingen',
   'instellingen.cooldown': 'Cooldown (milliseconden)',

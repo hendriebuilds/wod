@@ -102,6 +102,31 @@ db.exec(`
   );
 `);
 
+// v1.10.0: eenmalige migraties, relatietest-punten per paar per dag, strafpunten
+db.exec(`
+  CREATE TABLE IF NOT EXISTS migraties (
+    naam          TEXT PRIMARY KEY,
+    uitgevoerd_op INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+  CREATE TABLE IF NOT EXISTS relatietest_punten (
+    guild_id TEXT NOT NULL,
+    speler_a TEXT NOT NULL,
+    speler_b TEXT NOT NULL,
+    datum    TEXT NOT NULL,
+    PRIMARY KEY (guild_id, speler_a, speler_b, datum)
+  );
+  CREATE TABLE IF NOT EXISTS strafpunten (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    user_id  TEXT NOT NULL,
+    door_id  TEXT NOT NULL,
+    aantal   INTEGER NOT NULL,
+    reden    TEXT NOT NULL,
+    op       INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+  CREATE INDEX IF NOT EXISTS idx_strafpunten_guild ON strafpunten(guild_id);
+`);
+
 export const stmts = {
   getVragen:              db.prepare('SELECT * FROM vragen WHERE guild_id = ? AND type = ? ORDER BY id'),
   getVragenByCategorie:   db.prepare('SELECT * FROM vragen WHERE guild_id = ? AND type = ? AND categorie = ? ORDER BY id'),
@@ -178,6 +203,15 @@ export const stmts = {
   `),
   insertAchievement:    db.prepare('INSERT OR IGNORE INTO user_achievements (guild_id, user_id, achievement) VALUES (?, ?, ?)'),
   getUserAchievements:  db.prepare('SELECT * FROM user_achievements WHERE guild_id = ? AND user_id = ? ORDER BY behaald_op ASC'),
+  deleteAchievement:    db.prepare('DELETE FROM user_achievements WHERE guild_id = ? AND user_id = ? AND achievement = ?'),
+  hernoemAchievement:   db.prepare('UPDATE OR IGNORE user_achievements SET achievement = ? WHERE achievement = ?'),
+  deleteAchievementAlle: db.prepare('DELETE FROM user_achievements WHERE achievement = ?'),
+  getAlleUserLevels:    db.prepare('SELECT guild_id, user_id, punten, level FROM user_levels'),
+  updateUserLevelKolom: db.prepare('UPDATE user_levels SET level = ? WHERE guild_id = ? AND user_id = ?'),
+  getMigratie:          db.prepare('SELECT * FROM migraties WHERE naam = ?'),
+  insertMigratie:       db.prepare('INSERT INTO migraties (naam) VALUES (?)'),
+  insertRelatietestPunten: db.prepare('INSERT OR IGNORE INTO relatietest_punten (guild_id, speler_a, speler_b, datum) VALUES (?, ?, ?, ?)'),
+  insertStrafpunten:    db.prepare('INSERT INTO strafpunten (guild_id, user_id, door_id, aantal, reden) VALUES (?, ?, ?, ?, ?)'),
 };
 
 export function dbGetInstellingen(guildId) {

@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { stmts } from './database.js';
-import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo, categorieLabel } from './game.js';
+import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo, categorieLabel, ACHIEVEMENTS } from './game.js';
 
 export function buildKiesEmbed({ spelerNaam = null, vorigeNaam = null } = {}) {
   let tekst;
@@ -273,7 +273,7 @@ export function buildRelatieButtons(sessionId) {
   );
 }
 
-export function buildRelatieResultaatEmbed(s) {
+export function buildRelatieResultaatEmbed(s, puntenGegeven = true) {
   const matches = RELATIE_VRAGEN.map((_, i) => s.speler1.antwoorden[i] === s.speler2.antwoorden[i]);
   const score = matches.filter(Boolean).length;
   const pct = Math.round(score / RELATIE_VRAGEN.length * 100);
@@ -283,7 +283,10 @@ export function buildRelatieResultaatEmbed(s) {
   return new EmbedBuilder()
     .setColor(kleur)
     .setTitle(`💑 ${s.speler1.naam} & ${s.speler2.naam} — ${pct}% Match`)
-    .setDescription(`${scoreInfo.tekst}\n\n${matchBar}\n\n**${score}/${RELATIE_VRAGEN.length}** vragen hetzelfde beantwoord`)
+    .setDescription(
+      `${scoreInfo.tekst}\n\n${matchBar}\n\n**${score}/${RELATIE_VRAGEN.length}** vragen hetzelfde beantwoord` +
+      (puntenGegeven ? '' : '\n\nℹ️ Geen punten: jullie deden de test vandaag al samen.')
+    )
     .setTimestamp();
 }
 
@@ -346,19 +349,8 @@ export function buildRanglijstEmbed(rows) {
 }
 
 export function buildAchievementsEmbed(guildId, userId, userNaam, behaaldList) {
-  const ALLE = [
-    { id: 'Eerste stap',   emoji: '👣', beschrijving: 'Voor het eerst punten ontvangen' },
-    { id: 'Durfal',        emoji: '💪', beschrijving: 'Level 2 bereikt' },
-    { id: 'Onthullingsmaster', emoji: '🔓', beschrijving: 'Level 3 bereikt' },
-    { id: 'Legenda',       emoji: '👑', beschrijving: 'Level 4 bereikt' },
-    { id: 'Reroll addict', emoji: '🎲', beschrijving: '10x gererolld' },
-    { id: 'Lafaard',       emoji: '😅', beschrijving: '5x gepast' },
-    { id: 'Op dreef',      emoji: '🔥', beschrijving: '3 rondes voltooid' },
-    { id: 'Lovebird',      emoji: '💑', beschrijving: '/relatietest voltooid' },
-    { id: 'Zelfinzicht',   emoji: '🧠', beschrijving: '/liefdestaal of /persoonlijkheid voltooid' },
-  ];
   const behaaldSet = new Set(behaaldList.map(a => a.achievement));
-  const regels = ALLE.map(a => {
+  const regels = ACHIEVEMENTS.map(a => {
     if (behaaldSet.has(a.id)) {
       const ts = behaaldList.find(b => b.achievement === a.id);
       const datum = ts ? new Date(ts.behaald_op * 1000).toLocaleDateString('nl-NL') : '';
@@ -370,5 +362,17 @@ export function buildAchievementsEmbed(guildId, userId, userNaam, behaaldList) {
     .setColor(0x9b59b6)
     .setTitle(`🏆 Achievements van ${userNaam}`)
     .setDescription(regels.join('\n'))
+    .setTimestamp();
+}
+
+export function buildStrafpuntenEmbed({ spelerNaam, aantal, gevraagd, reden, doorNaam, puntenNa }) {
+  const kortReden = reden.length > 200 ? `${reden.slice(0, 199)}…` : reden;
+  let beschrijving = `**${spelerNaam}** verliest **${aantal}** punten.\n> ${kortReden}`;
+  if (aantal < gevraagd) beschrijving += '\n(Meer dan 0 punten kon er niet af.)';
+  return new EmbedBuilder()
+    .setColor(0xffa500)
+    .setTitle('⚖️ Strafpunten!')
+    .setDescription(beschrijving)
+    .setFooter({ text: `Uitgedeeld door ${doorNaam} • nu ${puntenNa} punten` })
     .setTimestamp();
 }
