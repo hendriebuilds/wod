@@ -8,6 +8,7 @@ import { ChannelType, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import { db, stmts, dbGetInstellingen } from './database.js';
 import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo } from './game.js';
 import { config, slaConfigOp, isSuperAdmin } from './config.js';
+import { SqliteStore } from './sessionStore.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,13 +30,48 @@ app.use((req, res, next) => {
   });
   next();
 });
-app.use(express.json());
+
+// ── CSRF: schrijvende verzoeken alleen vanaf het panel zelf ──
+// Geldt voor /api/* en POST /auth/logout. Origin (of anders Referer) moet gelijk
+// zijn aan frontendUrl, die elke keer opnieuw gelezen wordt. Een body moet JSON zijn.
+const VEILIGE_METHODES = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function toegestaneOrigin() {
+  try { return new URL(config.frontendUrl).origin; } catch { return null; }
+}
+
+function vereisZelfdeOrigin(req, res, next) {
+  if (VEILIGE_METHODES.has(req.method)) return next();
+  // Express routeert hoofdletterongevoelig en negeert een slash aan het eind
+  const pad = req.path.toLowerCase().replace(/\/+$/, '');
+  if (!pad.startsWith('/api/') && pad !== '/auth/logout') return next();
+
+  let origin = req.get('origin') || null;
+  if (!origin) {
+    try { origin = new URL(req.get('referer')).origin; } catch { origin = null; }
+  }
+  const toegestaan = toegestaneOrigin();
+  if (!origin || !toegestaan || origin !== toegestaan) {
+    console.warn(`🛡️ Verzoek geweigerd (csrf): ${req.method} ${req.path}`);
+    return res.status(403).json({ error: 'Verzoek niet toegestaan.', code: 'csrf' });
+  }
+
+  const heeftBody = parseInt(req.get('content-length') || '0', 10) > 0 || req.get('transfer-encoding');
+  if (heeftBody && !req.is('application/json')) {
+    return res.status(415).json({ error: 'Alleen JSON.', code: 'content_type' });
+  }
+  next();
+}
+
+app.use(vereisZelfdeOrigin);
+app.use(express.json({ limit: '2mb' }));
 
 // secure wordt bij het starten bepaald; een gewijzigde frontendUrl geldt pas na een herstart
 const cookieSecure = config.frontendUrl.startsWith('https://');
 console.log(`🔒 Sessie-cookie: secure=${cookieSecure}`);
 app.use(session({
   name: 'wod.sid',
+  store: new SqliteStore(),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -296,10 +332,12 @@ app.get('/api/vragen/export', requireAuth, requireGuild, (req, res) => {
   res.send(csv);
 });
 
-app.post('/api/vragen/import', requireAuth, requireGuild, express.text({ type: '*/*' }), (req, res) => {
+app.post('/api/vragen/import', requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   try {
-    const lines = req.body.trim().split(/\r?\n/);
+    const csv = req.body?.csv;
+    if (typeof csv !== 'string' || !csv.trim()) return res.status(400).json({ error: 'Bestand bevat geen data.' });
+    const lines = csv.trim().split(/\r?\n/);
     if (lines.length < 2) return res.status(400).json({ error: 'Bestand bevat geen data.' });
     const header = parseCSVRow(lines[0]).map(h => h.toLowerCase());
     const typeIdx = header.indexOf('type');

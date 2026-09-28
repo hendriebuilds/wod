@@ -125,6 +125,12 @@ db.exec(`
     op       INTEGER NOT NULL DEFAULT (unixepoch())
   );
   CREATE INDEX IF NOT EXISTS idx_strafpunten_guild ON strafpunten(guild_id);
+  CREATE TABLE IF NOT EXISTS panel_sessies (
+    sid      TEXT PRIMARY KEY,
+    sess     TEXT NOT NULL,
+    verloopt INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_panel_sessies_verloopt ON panel_sessies(verloopt);
 `);
 
 export const stmts = {
@@ -212,6 +218,14 @@ export const stmts = {
   insertMigratie:       db.prepare('INSERT INTO migraties (naam) VALUES (?)'),
   insertRelatietestPunten: db.prepare('INSERT OR IGNORE INTO relatietest_punten (guild_id, speler_a, speler_b, datum) VALUES (?, ?, ?, ?)'),
   insertStrafpunten:    db.prepare('INSERT INTO strafpunten (guild_id, user_id, door_id, aantal, reden) VALUES (?, ?, ?, ?, ?)'),
+  getPanelSessie:       db.prepare('SELECT sess, verloopt FROM panel_sessies WHERE sid = ?'),
+  upsertPanelSessie:    db.prepare(`
+    INSERT INTO panel_sessies (sid, sess, verloopt) VALUES (?, ?, ?)
+    ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, verloopt = excluded.verloopt
+  `),
+  deletePanelSessie:    db.prepare('DELETE FROM panel_sessies WHERE sid = ?'),
+  touchPanelSessie:     db.prepare('UPDATE panel_sessies SET verloopt = ? WHERE sid = ?'),
+  opruimenPanelSessies: db.prepare('DELETE FROM panel_sessies WHERE verloopt < ?'),
 };
 
 export function dbGetInstellingen(guildId) {
