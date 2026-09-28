@@ -60,6 +60,19 @@ Staat in de code, maar de versie per item is niet meer bekend.
 - [x] Admin commands, `verwijder_ja_<id>` en `/beurt verwijder|reset` controleren zelf op *Server beheren*
 - [x] Panel controleert rechten opnieuw (cache 60 s); kanaal bij categorie-koppeling gevalideerd
 
+## ✅ Uitgebracht in v1.10.0 — Punten eerlijk
+
+- [x] Alleen de speler van de ronde kan de rondeknoppen gebruiken (speler-ID in de custom ID); `/wod` geeft geen punten meer, kiezen wel
+- [x] Na "Nieuwe ronde": wie heeft geantwoord en wie nu aan de beurt is; zonder rotatie een open ronde
+- [x] Eén `stuurVraag()` voor alle waarheid/doen-berichten
+- [x] Gekoppeld kanaal toont alleen zijn eigen categorie (geen fallback, nummers en DM ook niet); categorie in de embed
+- [x] `/nooit`: +3 één keer per stemming; `/relatietest`: +15 één keer per paar per dag
+- [x] `/strafpunten speler aantal reden` voor admins
+- [x] Achievements op één plek (`ACHIEVEMENTS`), passend bij de 8 levels, eenmalig rechtgezet; "Lafaard" heet nu "Schijterd"
+- [x] Levelnamen in het panel kloppen weer
+- [x] Panelsessies in SQLite (ingelogd blijven na een herstart), CSRF-bescherming, CSV-import als JSON
+- [x] Image via GitHub Actions, lock files met `npm ci`, `admin/node_modules` en `admin/dist` uit git, `.dockerignore` aangevuld
+
 ---
 
 ## 🎯 Mogelijke focus-releases
@@ -68,7 +81,6 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 - **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `config.json` als volume
 - **Categorieën per kanaal 2.0:** de open items uit 🔞 (18+ alleen in eigen kanalen, meerdere categorieën per kanaal, opt-out)
-- **Punten eerlijk:** farmen onmogelijk, alleen de speler aan de beurt, achievements rechtgezet, levelnamen in het panel
 - **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen
 - **AI-vraaggenerator:** Anthropic of Ollama met review-stap
 - **Tweetalige bot:** Engelse berichten en vragen per server
@@ -159,10 +171,10 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Sessie-cookie instellen**
   `secure: false` en geen `sameSite`. Instellen: `httpOnly`, `sameSite: 'lax'`, `secure: true` achter HTTPS met `app.set('trust proxy', 1)`, en een `maxAge`.
 
-- [ ] `M` **CSRF-bescherming op de API**
+- [x] `M` **CSRF-bescherming op de API** (v1.10.0: `Origin`/`Referer` gelijk aan `frontendUrl`, alleen JSON, import als `{ csv }`)
   `POST /api/vragen/import` accepteert elk content-type (`express.text({ type: '*/*' })`), dus een formulier op een andere site kan vragen importeren. Alle schrijvende routes alleen met `Content-Type: application/json` (import als JSON of met een eigen header, bijv. `X-Requested-With`), en de `Origin` controleren tegen `frontendUrl`.
 
-- [ ] `M` **Sessies niet in het geheugen**
+- [x] `M` **Sessies niet in het geheugen** (v1.10.0: eigen `SqliteStore`, tabel `panel_sessies`)
   `express-session` gebruikt de MemoryStore: iedereen is uitgelogd na een herstart en het lekt geheugen. Eigen kleine store in SQLite, of een package na toestemming.
 
 - [x] `S` **Security headers op het panel**
@@ -326,6 +338,9 @@ Suggesties om items te bundelen. Vrij te husselen.
 ---
 
 ## ⚙️ Technisch & Infra
+
+- [ ] `S` **`NODE_ENV=production` in het image**
+  Het Dockerfile zet geen `NODE_ENV`. Bij ongeldige JSON of een te grote body (> 2 MB) antwoordt Express dan met zijn standaard HTML-foutpagina, inclusief stacktrace. `ENV NODE_ENV=production` in het Dockerfile, en eventueel een eigen error-handler die JSON teruggeeft (`{ error, code }`).
 
 - [ ] `S` **`build-and-push.sh` volgens de standaard**
   Sinds v1.10.0 (fase 1) een noodoptie die de versie uit `VERSION` leest en stopt als `VERSION` en `package.json` verschillen. Nog open: stoppen (met een melding) als de repo niet schoon is of er ongepushte commits zijn. Zoals `build-push.sh` van de Hendriebuilds-bot.

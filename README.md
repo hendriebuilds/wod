@@ -48,6 +48,8 @@ Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-U
 
 - **HTTPS en `X-Forwarded-Proto`:** begint `frontendUrl` met `https://`, dan is de sessie-cookie `Secure`. De reverse proxy moet dan de header `X-Forwarded-Proto` meesturen; zonder die header lukt het inloggen niet (je belandt steeds weer op het loginscherm). Of de cookie `Secure` is, wordt bij het starten bepaald: na het wijzigen van `frontendUrl` de container herstarten.
 - **Restart policy:** gebruik `unless-stopped` of `always`. Bij een onverwachte fout (`uncaughtException`) stopt de bot bewust, zodat Docker hem schoon herstart.
+- **Altijd via `<PANEL-URL>`:** opslaan, verwijderen en uitloggen werken alleen als het panel wordt geopend op het adres uit `frontendUrl` (CSRF-bescherming: de API controleert de `Origin`). Via een ander adres (bijv. rechtstreeks op de poort) kun je wel kijken, maar niets wijzigen; je krijgt dan een 403.
+- **Ingelogd blijven:** panelsessies staan in `bot.db` (tabel `panel_sessies`), dus een herstart of update van de container logt je niet uit. Een sessie verloopt na 24 uur.
 - **Startcontrole:** de bot start niet als een verplichte variabele ontbreekt of `SESSION_SECRET` korter is dan 32 tekens. De log noemt welke variabele het is.
 
 ### Omgevingsvariabelen
@@ -114,7 +116,7 @@ Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrep
 
 ### CSV-import
 
-Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `18+`). Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen; na de import zie je hoeveel er zijn toegevoegd en overgeslagen.
+Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `18+`). Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen; na de import zie je hoeveel er zijn toegevoegd en overgeslagen.
 
 ```csv
 type,tekst,categorie
@@ -251,6 +253,8 @@ cd admin && npm run dev     # optioneel: panel met hot reload; /api en /auth gaa
 Gebruik `npm ci`, zodat je precies de versies uit de lock files krijgt. Alleen bij het toevoegen of bijwerken van een package gebruik je `npm install`; commit dan ook de bijgewerkte `package-lock.json`.
 
 Gebruik bij voorkeur een aparte testbot en een testserver, zodat je de echte servers niet raakt. Voor de login lokaal: redirect `http://localhost:3001/auth/callback` in de Developer Portal en in `config.json`.
+
+Door de CSRF-controle moet `frontendUrl` gelijk zijn aan het adres waarop je het panel opent: `http://localhost:3001` voor het gebouwde panel, of `http://localhost:5173` als je de Vite-devserver (`npm run dev`) gebruikt. Anders geven opslaan en uitloggen een 403.
 
 ---
 

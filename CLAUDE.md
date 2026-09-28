@@ -27,7 +27,8 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `src/embeds.js` — alle embeds en knoppenrijen (`build*Embed`, `build*Buttons`)
 - `src/ronde.js` — rondes: `stuurVraag()` (de enige plek die een waarheid/doen-embed met actieknoppen verstuurt, incl. DM-modus), `kiesVraag()`, `parseRondeKnop()`, `claimBericht()`/`geefBerichtVrij()` (één verwerking per bericht)
 - `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen; rondeknoppen in `handleRondeKnop()` (alleen de speler uit de custom ID)
-- `src/server.js` — Express-app: auth, alle `/api`-routes, statische bestanden van het panel
+- `src/server.js` — Express-app: CSRF-controle (`vereisZelfdeOrigin`), auth, alle `/api`-routes, statische bestanden van het panel
+- `src/sessionStore.js` — `SqliteStore`: sessies van het panel in de tabel `panel_sessies` (opruimen elke 15 min)
 - `src/commands/admin/` — `voeg-toe`, `verwijder`, `lijst`, `reload`, `reset`, `sessie`, `strafpunten`
 - `src/commands/game/` — `wod`, `waarheid`, `doen`, `beurt`, `nooit`, `statistieken`, `profiel`, `ranglijst`, `achievements`
 - `src/commands/fun/` — `liefdestaal`, `persoonlijkheid`, `relatietest`
@@ -42,7 +43,7 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 Werk deze lijst bij zodra er bestanden bijkomen.
 
 ### Database (`$DATA_DIR/bot.db`)
-Alles behalve `bot_servers` heeft een `guild_id`.
+Alles behalve `bot_servers`, `migraties` en `panel_sessies` heeft een `guild_id`.
 | tabel | inhoud |
 |---|---|
 | `vragen` | `type` (`waarheid`/`doen`), `tekst`, `categorie`, `dm_modus`. UNIQUE-index op `(guild_id, LOWER(tekst))` |
@@ -57,6 +58,7 @@ Alles behalve `bot_servers` heeft een `guild_id`.
 | `migraties` | eenmalige datamigraties die al zijn uitgevoerd (`naam`, bijv. `achievements_v1_10`) |
 | `relatietest_punten` | `(guild_id, speler_a, speler_b, datum)`: paar (laagste ID eerst) kreeg op die dag (Europe/Amsterdam) al punten |
 | `strafpunten` | `user_id`, `door_id`, werkelijk afgetrokken `aantal`, `reden`, `op`; voor een later auditlog |
+| `panel_sessies` | sessies van het panel: `sid`, `sess` (JSON), `verloopt` (ms); geen `guild_id` |
 
 ### Instellingen per server (tabel `instellingen`, panel → Instellingen)
 | kolom | beschrijving | standaard |
@@ -103,12 +105,13 @@ Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `mig
 - **Panel:** bij login krijgt de sessie de servers waar de bot in zit én de gebruiker *Server beheren* (`0x20`) heeft. Superadmins (`SUPERADMIN_IDS`) krijgen alle servers. De actieve server staat in `req.session.activeGuildId`.
 - **Routes:** `requireAuth` (ingelogd), `requireGuild` (server gekozen én rechten opnieuw gecontroleerd via `heeftToegang()`, cache 60 s; bij verlies 403 `geen_toegang_server` of 401), `requireSuperAdmin` (superadmin). `POST /api/guild` controleert ook via `heeftToegang()`. Een tijdelijke Discord-fout geeft 503 en logt niemand uit.
 - **Admin commands en -knoppen:** `setDefaultMemberPermissions(ManageGuild)` bepaalt wie ze ziet; `interactionCreate` (voor `src/commands/admin/*`), `verwijder_ja_<id>` en `/beurt verwijder|reset` controleren zelf met `isGuildAdmin()`.
-- **Login:** OAuth met `state`, nieuwe sessie-ID na inloggen, cookie `wod.sid` (`HttpOnly`, `SameSite=Lax`, `Secure` als `frontendUrl` https is). Fouten gaan naar `?error=geen_toegang|ongeldige_login|login_mislukt`.
+- **Login:** OAuth met `state`, nieuwe sessie-ID na inloggen, cookie `wod.sid` (`HttpOnly`, `SameSite=Lax`, `Secure` als `frontendUrl` https is), sessie in SQLite (`SqliteStore`, 24 uur). Fouten gaan naar `?error=geen_toegang|ongeldige_login|login_mislukt`.
+- **CSRF:** elk verzoek buiten `GET`/`HEAD`/`OPTIONS` naar `/api/*` en `POST /auth/logout` moet een `Origin` (of anders `Referer`) hebben die gelijk is aan `frontendUrl`, anders 403 `csrf`. Een body moet `application/json` zijn, anders 415 `content_type`. JSON-limiet 2 MB. Nieuwe schrijvende routes vallen hier automatisch onder; stuur vanuit het panel alleen JSON (via `req()` in `api.js`).
 
 ### API-routes (`src/server.js`)
 - **Auth:** `GET /auth/login`, `GET /auth/callback`, `GET /auth/me`, `POST /auth/logout`
 - **Servers kiezen:** `GET /api/guilds`, `POST /api/guild`
-- **Vragen:** `GET/POST /api/vragen`, `PUT/DELETE /api/vragen/:id`, `GET /api/vragen/export`, `POST /api/vragen/import` (CSV als tekst)
+- **Vragen:** `GET/POST /api/vragen`, `PUT/DELETE /api/vragen/:id`, `GET /api/vragen/export`, `POST /api/vragen/import` (JSON `{ csv }`)
 - **Nooit:** `GET/POST /api/nooit`, `PUT/DELETE /api/nooit/:id`
 - **Sessies en statistieken:** `GET /api/sessies`, `DELETE /api/sessies/:id`, `GET /api/statistieken`, `POST /api/reset`, `POST /api/reload`, `GET /api/ranglijst`
 - **Instellingen:** `GET/PUT /api/instellingen`, `POST /api/reset-config`, `GET/POST /api/channel-categorie`, `DELETE /api/channel-categorie/:channelId`, `GET /api/kanalen`, `GET /api/categorieen`, `POST /api/categoriemappen/aanmaken`

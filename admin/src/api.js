@@ -19,17 +19,6 @@ async function req(method, path, body) {
   return res.json();
 }
 
-async function reqText(method, path, body) {
-  const res = await fetch(path, {
-    method,
-    credentials: 'include',
-    headers: { 'Content-Type': 'text/plain' },
-    body,
-  });
-  if (!res.ok) await handleFout(res, path);
-  return res.json();
-}
-
 export const api = {
   me: () => req('GET', '/auth/me'),
   logout: () => req('POST', '/auth/logout'),
@@ -39,7 +28,7 @@ export const api = {
   addVraag: (type, tekst, categorie, dmModus) => req('POST', '/api/vragen', { type, tekst, categorie, dmModus }),
   updateVraag: (id, tekst, categorie, dmModus) => req('PUT', `/api/vragen/${id}`, { tekst, categorie, dmModus }),
   deleteVraag: (id) => req('DELETE', `/api/vragen/${id}`),
-  importVragen: (csvText) => reqText('POST', '/api/vragen/import', csvText),
+  importVragen: (csvText) => req('POST', '/api/vragen/import', { csv: csvText }),
   getStats: () => req('GET', '/api/statistieken'),
   resetStats: () => req('POST', '/api/reset'),
   reload: () => req('POST', '/api/reload'),
