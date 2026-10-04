@@ -107,16 +107,16 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Panel toont oude levelnamen op de ranglijst** (v1.10.0)
   `ranglijst.levelNamen` in `nl.js` en `en.js` heeft nog de 4 levels van vóór v1.9.0. Level 5 en hoger krijgen geen naam, en level 2 t/m 4 een verkeerde (Lv.4 toont "Legenda" in plaats van "Avonturier"). Discord klopt wel, omdat de bot `LEVELS` uit `src/game.js` gebruikt. `GET /api/ranglijst` rekent het level uit met `getLevelInfo(punten)` en stuurt het levelnummer mee. De lijst in beide vertaalbestanden krijgt alle 8 levels. EN: Coward, Participant, Daredevil, Adventurer, Revelation, Seducer, Champion, Legend.
 
-- [ ] `S` **Migratie van `user_levels` in de verkeerde volgorde**
+- [x] `S` **Migratie van `user_levels` in de verkeerde volgorde** (v1.10.1)
   De `ALTER TABLE user_levels`-regels staan vóór de `CREATE TABLE user_levels` (oorzaak van `errorcodes/user_levels.md`). Werkt nu toevallig, maar alle migraties horen na het aanmaken van de tabellen, met `PRAGMA table_info` in plaats van een lege `catch`.
 
-- [ ] `S` **Duplicaten opruimen bij elke start**
+- [x] `S` **Duplicaten opruimen bij elke start** (v1.10.1)
   De `DELETE … NOT IN (SELECT MIN(id) …)` uit v1.9.2 draait bij elke start. Door de UNIQUE-index is dat overbodig; eenmalig maken (bijv. alleen als de index nog niet bestaat).
 
-- [ ] `S` **Standaardcategorie is niet eenduidig**
+- [x] `S` **Standaardcategorie is niet eenduidig** (v1.10.1; standaard `algemeen`, `/voeg-toe` met optie `categorie`)
   De database en CSV-import gebruiken `18+` als standaard, `/voeg-toe` gebruikt `algemeen`. Eén standaard kiezen (bij voorkeur `algemeen`), en `/voeg-toe` een optie `categorie` geven met de vaste lijst.
 
-- [ ] `S` **Categorie niet gevalideerd**
+- [x] `S` **Categorie niet gevalideerd** (v1.10.1)
   Panel, API en CSV accepteren elke tekst als categorie. De vaste lijst staat sinds v1.10.0 op één plek (`CATEGORIEEN` in `src/game.js`, nu alleen voor weergave); de API en import moeten daarop controleren.
 
 - [ ] `S` **Lange vragen breken de embed**

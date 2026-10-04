@@ -116,7 +116,9 @@ Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrep
 
 ### CSV-import
 
-Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `18+`). Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen; na de import zie je hoeveel er zijn toegevoegd en overgeslagen.
+Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `algemeen`) en moet `algemeen`, `vrienden`, `koppels`, `feest` of `18+` zijn (hoofdletters maken niet uit). Regels met een onbekend type, een lege tekst of een onbekende categorie (bijv. een eigen categorie als `spicy`) tellen als ongeldig en worden niet geïmporteerd. Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen. Na de import zie je hoeveel vragen er zijn toegevoegd, overgeslagen en ongeldig.
+
+Bestaande vragen met een categorie buiten deze lijst blijven werken. Het panel markeert ze met ⚠️; kies bij het bewerken een geldige categorie.
 
 ```csv
 type,tekst,categorie
@@ -158,7 +160,7 @@ De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissi
 
 | Command | Beschrijving |
 |---|---|
-| `/voeg-toe type tekst` | Vraag of opdracht toevoegen (categorie `algemeen`) |
+| `/voeg-toe type tekst categorie` | Vraag of opdracht toevoegen in de gekozen categorie |
 | `/verwijder type nummer` | Vraag of opdracht verwijderen, met bevestiging |
 | `/lijst [type]` | Alle vragen met nummer |
 | `/reload` | Gebruikte vragen van de sessie in dit kanaal resetten |

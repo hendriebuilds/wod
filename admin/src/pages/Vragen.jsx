@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api.js';
 import { useLanguage } from '../LanguageContext.jsx';
 
+// Gelijk houden met CATEGORIEEN in src/game.js
 const CATEGORIEEN = ['algemeen', 'vrienden', 'koppels', 'feest', '18+'];
+
+function isGeldigeCategorie(cat) {
+  return CATEGORIEEN.includes(cat);
+}
 
 const CAT_KLEUREN = {
   algemeen: '#5865f2',
@@ -74,7 +79,8 @@ export default function Vragen() {
 
   const toggleDM = async (item) => {
     try {
-      await api.updateVraag(item.id, item.tekst, item.categorie, !item.dmModus);
+      // Zonder categorie laat de API de huidige staan, ook een onbekende
+      await api.updateVraag(item.id, item.tekst, undefined, !item.dmModus);
       await laad();
     } catch {
       toon(t('vragen.dmWijzigenMislukt'), 'error');
@@ -83,6 +89,10 @@ export default function Vragen() {
 
   const opslaan = async (id) => {
     if (!editTekst.trim()) return;
+    if (!isGeldigeCategorie(editCat)) {
+      toon(t('vragen.kiesCategorie'), 'error');
+      return;
+    }
     try {
       await api.updateVraag(id, editTekst.trim(), editCat, editDM);
       setEditId(null);
@@ -111,9 +121,11 @@ export default function Vragen() {
     try {
       const result = await api.importVragen(text);
       await laad();
-      const msg = result.overgeslagen > 0
-        ? `✅ ${result.toegevoegd} vragen toegevoegd, ${result.overgeslagen} overgeslagen (duplicaat).`
-        : `✅ ${result.toegevoegd} vragen toegevoegd.`;
+      const msg = [
+        t('vragen.importToegevoegd', { count: result.toegevoegd }),
+        result.overgeslagen > 0 && t('vragen.importOvergeslagen', { count: result.overgeslagen }),
+        result.ongeldig > 0 && t('vragen.importOngeldig', { count: result.ongeldig }),
+      ].filter(Boolean).join(' ');
       toon(msg);
     } catch {
       toon(t('vragen.importMislukt'), 'error');
@@ -219,6 +231,7 @@ export default function Vragen() {
                     value={editCat}
                     onChange={e => setEditCat(e.target.value)}
                   >
+                    {!isGeldigeCategorie(editCat) && <option value={editCat} disabled>⚠️ {editCat}</option>}
                     {CATEGORIEEN.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <button
@@ -235,16 +248,22 @@ export default function Vragen() {
               ) : (
                 <>
                   <span className="question-text">{item.tekst}</span>
-                  <span
-                    className="cat-badge"
-                    style={{
-                      backgroundColor: catKleur(item.categorie) + '22',
-                      color: catKleur(item.categorie),
-                      borderColor: catKleur(item.categorie) + '55',
-                    }}
-                  >
-                    {item.categorie}
-                  </span>
+                  {isGeldigeCategorie(item.categorie) ? (
+                    <span
+                      className="cat-badge"
+                      style={{
+                        backgroundColor: catKleur(item.categorie) + '22',
+                        color: catKleur(item.categorie),
+                        borderColor: catKleur(item.categorie) + '55',
+                      }}
+                    >
+                      {item.categorie}
+                    </span>
+                  ) : (
+                    <span className="cat-badge cat-badge-ongeldig" title={t('vragen.onbekendeCategorie')}>
+                      ⚠️ {item.categorie}
+                    </span>
+                  )}
                   <div className="question-actions">
                     <button
                       className={`btn btn-icon ${item.dmModus ? 'btn-primary' : 'btn-ghost'}`}

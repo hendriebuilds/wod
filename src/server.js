@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { ChannelType, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import { db, stmts, dbGetInstellingen } from './database.js';
-import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo } from './game.js';
+import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo, CATEGORIEEN, normaliseerCategorie, isGeldigeCategorie } from './game.js';
 import { config, slaConfigOp, isSuperAdmin } from './config.js';
 import { SqliteStore } from './sessionStore.js';
 
@@ -260,10 +260,12 @@ app.get('/api/vragen', requireAuth, requireGuild, (req, res) => {
 app.post('/api/vragen', requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const { type, tekst, categorie, dmModus } = req.body;
-  if (!['waarheid', 'doen'].includes(type) || !tekst?.trim()) {
+  if (!['waarheid', 'doen'].includes(type) || typeof tekst !== 'string' || !tekst.trim()) {
     return res.status(400).json({ error: 'Ongeldige invoer.' });
   }
-  stmts.insertVraag.run(guildId, type, tekst.trim(), categorie?.trim() || '18+', dmModus ? 1 : 0);
+  const cat = normaliseerCategorie(categorie);
+  if (!isGeldigeCategorie(cat)) return res.status(400).json({ error: 'Onbekende categorie.', code: 'ongeldige_categorie' });
+  stmts.insertVraag.run(guildId, type, tekst.trim(), cat, dmModus ? 1 : 0);
   res.json({ ok: true });
 });
 
@@ -271,8 +273,16 @@ app.put('/api/vragen/:id', requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const id = parseInt(req.params.id);
   const { tekst, categorie, dmModus } = req.body;
-  if (isNaN(id) || !tekst?.trim()) return res.status(400).json({ error: 'Ongeldige invoer.' });
-  const result = stmts.updateVraag.run(tekst.trim(), categorie?.trim() || '18+', dmModus ? 1 : 0, id, guildId);
+  if (isNaN(id) || typeof tekst !== 'string' || !tekst.trim()) return res.status(400).json({ error: 'Ongeldige invoer.' });
+  const vraag = db.prepare('SELECT categorie FROM vragen WHERE id = ? AND guild_id = ?').get(id, guildId);
+  if (!vraag) return res.status(404).json({ error: 'Vraag niet gevonden.' });
+  // Zonder categorie blijft de huidige staan (ook een oude, onbekende)
+  let cat = vraag.categorie;
+  if (categorie !== undefined) {
+    cat = normaliseerCategorie(categorie);
+    if (!isGeldigeCategorie(cat)) return res.status(400).json({ error: 'Onbekende categorie.', code: 'ongeldige_categorie' });
+  }
+  const result = stmts.updateVraag.run(tekst.trim(), cat, dmModus ? 1 : 0, id, guildId);
   if (result.changes === 0) return res.status(404).json({ error: 'Vraag niet gevonden.' });
   res.json({ ok: true });
 });
@@ -348,19 +358,21 @@ app.post('/api/vragen/import', requireAuth, requireGuild, (req, res) => {
     }
     let toegevoegd = 0;
     let overgeslagen = 0;
+    let ongeldig = 0;
     const insertMany = db.transaction(() => {
       for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
         const row = parseCSVRow(lines[i]);
         const type = row[typeIdx]?.toLowerCase().trim();
         const tekst = row[tekstIdx]?.trim();
-        const categorie = catIdx !== -1 ? (row[catIdx]?.trim() || '18+') : '18+';
-        if (!tekst || !['waarheid', 'doen'].includes(type)) continue;
+        const categorie = normaliseerCategorie(catIdx !== -1 ? row[catIdx] : '');
+        if (!tekst || !['waarheid', 'doen'].includes(type) || !isGeldigeCategorie(categorie)) { ongeldig++; continue; }
         const r = stmts.insertVraag.run(guildId, type, tekst, categorie, 0);
         if (r.changes === 1) { toegevoegd++; } else { overgeslagen++; }
       }
     });
     insertMany();
-    res.json({ success: true, toegevoegd, overgeslagen });
+    res.json({ success: true, toegevoegd, overgeslagen, ongeldig });
   } catch {
     res.status(400).json({ error: 'Fout bij verwerken van bestand.' });
   }
@@ -503,8 +515,8 @@ app.post('/api/channel-categorie', requireAuth, requireGuild, (req, res) => {
   const guildId = req.session.activeGuildId;
   const { channelId, categorie } = req.body;
   if (typeof channelId !== 'string' || !/^\d{17,20}$/.test(channelId)) return res.status(400).json({ error: 'Ongeldig kanaal.' });
-  const cat = typeof categorie === 'string' ? categorie.trim() : '';
-  if (!cat || cat.length > 50) return res.status(400).json({ error: 'Ongeldige categorie.' });
+  const cat = normaliseerCategorie(categorie);
+  if (!isGeldigeCategorie(cat)) return res.status(400).json({ error: 'Onbekende categorie.', code: 'ongeldige_categorie' });
   // Zelfde kanaaltypes als GET /api/kanalen
   const kanaal = _client.guilds.cache.get(guildId)?.channels.cache.get(channelId);
   if (!kanaal || kanaal.type !== ChannelType.GuildText) return res.status(400).json({ error: 'Ongeldig kanaal.' });
@@ -536,7 +548,7 @@ app.post('/api/categoriemappen/aanmaken', requireAuth, requireGuild, async (req,
   const guild = _client.guilds.cache.get(guildId);
   if (!guild) return res.status(404).json({ error: 'Server niet gevonden.' });
   try {
-    const categories = stmts.getDistinctCats.all(guildId).map(r => r.categorie);
+    const categories = stmts.getDistinctCats.all(guildId).map(r => r.categorie).filter(isGeldigeCategorie);
     if (categories.length === 0) return res.status(400).json({ error: 'Geen vraagcategorieën gevonden. Voeg eerst vragen toe.' });
 
     const catChannel = await guild.channels.create({
@@ -578,7 +590,7 @@ app.post('/api/reset-config', requireAuth, requireGuild, (req, res) => {
 // ── Beschikbare vraagcategorieën API ──
 
 app.get('/api/categorieen', requireAuth, requireGuild, (req, res) => {
-  res.json(stmts.getDistinctCats.all(req.session.activeGuildId).map(r => r.categorie));
+  res.json(Object.keys(CATEGORIEEN));
 });
 
 // ── Servers API (superadmin) ──
