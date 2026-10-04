@@ -1,9 +1,45 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { stmts } from './database.js';
-import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo, categorieLabel, ACHIEVEMENTS } from './game.js';
+import { getSessieCache, LIEFDESTAAL_VRAGEN, LIEFDESTALEN, PERSOONLIJKHEID_VRAGEN, PERSOONLIJKHEID_TYPES, RELATIE_VRAGEN, RELATIE_SCORES, getLevelInfo, categorieLabel, ACHIEVEMENTS, MAX_LENGTE } from './game.js';
+
+// Limieten van Discord
+export const LIMIET = { titel: 256, beschrijving: 4096, veldNaam: 256, veldWaarde: 1024, footer: 2048, bericht: 2000 };
+
+// Knipt op hele tekens (emoji blijven heel) en eindigt met …
+// Discord telt UTF-16-eenheden, daarom controleren op .length en knippen op codepoints.
+export function kapAf(tekst, max) {
+  const s = String(tekst ?? '');
+  if (s.length <= max) return s;
+  const tekens = Array.from(s);
+  let uit = '';
+  for (const t of tekens) {
+    if (uit.length + t.length > max - 1) break;
+    uit += t;
+  }
+  return uit.trimEnd() + '…';
+}
+
+// Namen tot de limiet, daarna "… en N anderen"
+export function naamLijst(namen, max = LIMIET.veldWaarde, scheiding = ', ') {
+  const lijst = [...namen].map(n => kapAf(n, 100));
+  let uit = '';
+  for (let i = 0; i < lijst.length; i++) {
+    const deel = (i === 0 ? '' : scheiding) + lijst[i];
+    const rest = lijst.length - i - 1;
+    const staart = rest > 0 ? `${scheiding}… en ${rest} ${rest === 1 ? 'ander' : 'anderen'}` : '';
+    if ((uit + deel + staart).length > max) {
+      const over = lijst.length - i;
+      return uit + `${uit ? scheiding : ''}… en ${over} ${over === 1 ? 'ander' : 'anderen'}`;
+    }
+    uit += deel;
+  }
+  return uit;
+}
 
 export function buildKiesEmbed({ spelerNaam = null, vorigeNaam = null } = {}) {
   let tekst;
+  spelerNaam = spelerNaam && kapAf(spelerNaam, 100);
+  vorigeNaam = vorigeNaam && kapAf(vorigeNaam, 100);
   if (spelerNaam) {
     tekst = vorigeNaam
       ? `Nu is **${spelerNaam}** aan de beurt! Kies een optie hieronder.`
@@ -24,9 +60,9 @@ function vraagEmbed({ kleur, titel, tekst, eenheid, teller }) {
   const is18 = teller.categorie === '18+';
   return new EmbedBuilder()
     .setColor(kleur)
-    .setTitle(is18 ? `${titel} 🔞` : titel)
-    .setDescription(tekst)
-    .setFooter({ text: `${categorieLabel(teller.categorie)} • ${teller.gehad}/${teller.totaal} ${eenheid} gehad` })
+    .setTitle(kapAf(is18 ? `${titel} 🔞` : titel, LIMIET.titel))
+    .setDescription(kapAf(tekst, LIMIET.beschrijving))
+    .setFooter({ text: kapAf(`${categorieLabel(teller.categorie)} • ${teller.gehad}/${teller.totaal} ${eenheid} gehad`, LIMIET.footer) })
     .setTimestamp();
 }
 
@@ -107,11 +143,10 @@ export function buildStatistiekenEmbed(guildId, channelId = null) {
   const duurTekst = uren > 0 ? `${uren}u ${minuten}m` : `${minuten}m`;
   const rerollLijst = [...cache.rerollTeller.entries()]
     .sort((a, b) => b[1].teller - a[1].teller)
-    .map(([, data], i) => `**${i + 1}.** ${data.naam} — ${data.teller}x reroll`)
-    .join('\n');
+    .map(([, data], i) => `**${i + 1}.** ${kapAf(data.naam, 100)} — ${data.teller}x reroll`);
   return new EmbedBuilder()
     .setColor(0xfee75c)
-    .setTitle(`📊 Statistieken — ${sessieNaam}`)
+    .setTitle(kapAf(`📊 Statistieken — ${sessieNaam}`, LIMIET.titel))
     .addFields(
       { name: '⏱️ Sessieduur', value: duurTekst, inline: true },
       { name: '🎮 Totaal gespeeld', value: `${totaal} rondes`, inline: true },
@@ -119,7 +154,7 @@ export function buildStatistiekenEmbed(guildId, channelId = null) {
       { name: '🔵 Waarheid', value: `${cache.aantalWaarheid}x`, inline: true },
       { name: '🔴 Doen', value: `${cache.aantalDoen}x`, inline: true },
       { name: '​', value: '​', inline: true },
-      { name: '🎲 Reroll ranglijst', value: rerollLijst || 'Nog niemand gererolld!', inline: false }
+      { name: '🎲 Reroll ranglijst', value: naamLijst(rerollLijst, LIMIET.veldWaarde, '\n') || 'Nog niemand gererolld!', inline: false }
     )
     .setFooter({ text: `Sessie gestart om ${cache.sessieStart.toLocaleTimeString('nl-NL')}` })
     .setTimestamp();
@@ -137,7 +172,7 @@ export function buildLijstEmbeds(guildId, type) {
   let huidigeTekst = '';
   let startNummer = 1;
   for (let i = 0; i < lijst.length; i++) {
-    const regel = `**${i + 1}.** ${lijst[i].tekst}\n`;
+    const regel = `**${i + 1}.** ${kapAf(lijst[i].tekst, MAX_LENGTE.vraag)}\n`;
     if (huidigeTekst.length + regel.length > 3800) {
       embeds.push(new EmbedBuilder().setColor(kleur).setTitle(`${emoji} ${label} (${startNummer}–${i})`).setDescription(huidigeTekst.trim()));
       huidigeTekst = regel;
@@ -160,7 +195,7 @@ export function buildNooitEmbed(stelling, wel, nooit) {
   return new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('🍺 Nooit heb ik...')
-    .setDescription(`**${stelling}**\n\nKlik op een knop om te stemmen. Klik nogmaals om je stem in te trekken.`)
+    .setDescription(`**${kapAf(stelling, LIMIET.beschrijving - 200)}**\n\nKlik op een knop om te stemmen. Klik nogmaals om je stem in te trekken.`)
     .setFooter({ text: `${wel.size + nooit.size} stem${wel.size + nooit.size === 1 ? '' : 'men'} uitgebracht` });
 }
 
@@ -212,7 +247,7 @@ export function buildLiefdestaalResultaatEmbed(user, antwoorden) {
   const naam = user.displayName ?? user.username;
   return new EmbedBuilder()
     .setColor(primair.kleur)
-    .setTitle(`💕 Liefdestaal van ${naam}`)
+    .setTitle(kapAf(`💕 Liefdestaal van ${naam}`, LIMIET.titel))
     .setDescription(`**${titel}**\n\n${primair.beschrijving}\n\n${scoresTekst}`)
     .setFooter({ text: 'Gebaseerd op The 5 Love Languages van Gary Chapman' })
     .setTimestamp();
@@ -250,7 +285,7 @@ export function buildPersoonlijkheidResultaatEmbed(user, antwoorden) {
   ].join('\n');
   return new EmbedBuilder()
     .setColor(info.kleur)
-    .setTitle(`🧠 Persoonlijkheid van ${naam}: ${type}`)
+    .setTitle(kapAf(`🧠 Persoonlijkheid van ${naam}: ${type}`, LIMIET.titel))
     .setDescription(`**${info.naam}**\n\n${info.beschrijving}\n\`\`\`${scoresTekst}\`\`\``)
     .setFooter({ text: 'Geïnspireerd op Myers-Briggs Type Indicator (MBTI)' })
     .setTimestamp();
@@ -263,7 +298,7 @@ export function buildRelatieVraagEmbed(index, naam) {
     .setColor(0xeb459e)
     .setTitle(`💑 Relatietest — Vraag ${index + 1}/${RELATIE_VRAGEN.length}`)
     .setDescription(`**${v.vraag}**\n\n🅰️ ${v.a}\n\n🅱️ ${v.b}`)
-    .setFooter({ text: `${naam} • Voortgang: ${voortgang}` });
+    .setFooter({ text: kapAf(`${naam} • Voortgang: ${voortgang}`, LIMIET.footer) });
 }
 
 export function buildRelatieButtons(sessionId) {
@@ -282,7 +317,7 @@ export function buildRelatieResultaatEmbed(s, puntenGegeven = true) {
   const kleur = score >= 7 ? 0xeb459e : score >= 5 ? 0xfee75c : 0x5865f2;
   return new EmbedBuilder()
     .setColor(kleur)
-    .setTitle(`💑 ${s.speler1.naam} & ${s.speler2.naam} — ${pct}% Match`)
+    .setTitle(kapAf(`💑 ${kapAf(s.speler1.naam, 100)} & ${kapAf(s.speler2.naam, 100)} — ${pct}% Match`, LIMIET.titel))
     .setDescription(
       `${scoreInfo.tekst}\n\n${matchBar}\n\n**${score}/${RELATIE_VRAGEN.length}** vragen hetzelfde beantwoord` +
       (puntenGegeven ? '' : '\n\nℹ️ Geen punten: jullie deden de test vandaag al samen.')
@@ -307,7 +342,7 @@ export function buildProfielEmbed(row, achievements, targetUser) {
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`👤 Profiel van ${naam}`)
+    .setTitle(kapAf(`👤 Profiel van ${naam}`, LIMIET.titel))
     .addFields(
       { name: '🏅 Level', value: `Level ${lvlInfo.level} — ${lvlInfo.titel}`, inline: true },
       { name: '⭐ Punten', value: `${row.punten}`, inline: true },
@@ -322,7 +357,7 @@ export function buildLevelUpEmbed(user, levelInfo) {
     .setColor(0xfee75c)
     .setTitle('🎉 Level Up!')
     .setDescription(
-      `**${user.displayName ?? user.username}** is gestegen naar ` +
+      `**${kapAf(user.displayName ?? user.username, 100)}** is gestegen naar ` +
       `**Lv.${levelInfo.level} — ${levelInfo.titel}**!`
     )
     .setThumbnail(user.displayAvatarURL())
@@ -339,12 +374,12 @@ export function buildRanglijstEmbed(rows) {
   const regels = rows.map((row, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
     const lvl = getLevelInfo(row.punten);
-    return `${medal} **${row.user_naam}** — ${row.punten} punten _(Lv.${lvl.level} ${lvl.titel})_`;
+    return `${medal} **${kapAf(row.user_naam, 100)}** — ${row.punten} punten _(Lv.${lvl.level} ${lvl.titel})_`;
   });
   return new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('🏆 Ranglijst — Top 10')
-    .setDescription(regels.join('\n'))
+    .setDescription(kapAf(regels.join('\n'), LIMIET.beschrijving))
     .setTimestamp();
 }
 
@@ -360,19 +395,19 @@ export function buildAchievementsEmbed(guildId, userId, userNaam, behaaldList) {
   });
   return new EmbedBuilder()
     .setColor(0x9b59b6)
-    .setTitle(`🏆 Achievements van ${userNaam}`)
-    .setDescription(regels.join('\n'))
+    .setTitle(kapAf(`🏆 Achievements van ${userNaam}`, LIMIET.titel))
+    .setDescription(kapAf(regels.join('\n'), LIMIET.beschrijving))
     .setTimestamp();
 }
 
 export function buildStrafpuntenEmbed({ spelerNaam, aantal, gevraagd, reden, doorNaam, puntenNa }) {
-  const kortReden = reden.length > 200 ? `${reden.slice(0, 199)}…` : reden;
-  let beschrijving = `**${spelerNaam}** verliest **${aantal}** punten.\n> ${kortReden}`;
+  const kortReden = kapAf(reden, 200);
+  let beschrijving = `**${kapAf(spelerNaam, 100)}** verliest **${aantal}** punten.\n> ${kortReden}`;
   if (aantal < gevraagd) beschrijving += '\n(Meer dan 0 punten kon er niet af.)';
   return new EmbedBuilder()
     .setColor(0xffa500)
     .setTitle('⚖️ Strafpunten!')
-    .setDescription(beschrijving)
-    .setFooter({ text: `Uitgedeeld door ${doorNaam} • nu ${puntenNa} punten` })
+    .setDescription(kapAf(beschrijving, LIMIET.beschrijving))
+    .setFooter({ text: kapAf(`Uitgedeeld door ${doorNaam} • nu ${puntenNa} punten`, LIMIET.footer) })
     .setTimestamp();
 }

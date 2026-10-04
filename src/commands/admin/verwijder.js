@@ -1,4 +1,5 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, MessageFlags } from 'discord.js';
+import { kapAf, LIMIET } from '../../embeds.js';
 
 export const data = new SlashCommandBuilder()
   .setName('verwijder')
@@ -21,7 +22,7 @@ export async function execute(interaction, { stmts }) {
   if (nummer > vragen.length) {
     await interaction.reply({
       content: `❌ Er is geen ${label} met nummer ${nummer}. Gebruik \`/lijst\` om de nummers te zien.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -30,12 +31,12 @@ export async function execute(interaction, { stmts }) {
     embeds: [new EmbedBuilder()
       .setColor(0xffa500)
       .setTitle('⚠️ Bevestig verwijdering')
-      .setDescription(`Weet je zeker dat je ${label} #${nummer} wilt verwijderen?\n\n> ${vraag.tekst}`)
+      .setDescription(kapAf(`Weet je zeker dat je ${label} #${nummer} wilt verwijderen?\n\n> ${vraag.tekst}`, LIMIET.beschrijving))
       .setTimestamp()],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`verwijder_ja_${vraag.id}`).setLabel('🗑️ Ja, verwijder').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('verwijder_nee').setLabel('❌ Annuleer').setStyle(ButtonStyle.Secondary)
     )],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }

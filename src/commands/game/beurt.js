@@ -1,5 +1,6 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { isGuildAdmin, GEEN_RECHTEN } from '../../permissions.js';
+import { kapAf, LIMIET } from '../../embeds.js';
 
 export const data = new SlashCommandBuilder()
   .setName('beurt')
@@ -25,13 +26,13 @@ export async function execute(interaction, { game }) {
     const doelLid = interaction.options.getMember('speler');
     const naam = doelLid?.displayName ?? doelUser.username;
     if (b.lijst.some(s => s.id === doelUser.id)) {
-      await interaction.reply({ content: `**${naam}** staat al in de rotatie.`, ephemeral: true });
+      await interaction.reply({ content: `**${naam}** staat al in de rotatie.`, flags: MessageFlags.Ephemeral });
       return;
     }
     b.lijst.push({ id: doelUser.id, naam });
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Speler toegevoegd')
-        .setDescription(`**${naam}** is toegevoegd aan de rotatie.\n\n${game.buildBeurtenLijstTekst(guildId)}`).setTimestamp()],
+        .setDescription(kapAf(`**${naam}** is toegevoegd aan de rotatie.\n\n${game.buildBeurtenLijstTekst(guildId)}`, LIMIET.beschrijving)).setTimestamp()],
     });
     return;
   }
@@ -40,25 +41,25 @@ export async function execute(interaction, { game }) {
     const doelUser = interaction.options.getUser('speler');
     const idx = b.lijst.findIndex(s => s.id === doelUser.id);
     if (idx === -1) {
-      await interaction.reply({ content: 'Die speler staat niet in de rotatie.', ephemeral: true });
+      await interaction.reply({ content: 'Die speler staat niet in de rotatie.', flags: MessageFlags.Ephemeral });
       return;
     }
     const verwijderd = b.lijst.splice(idx, 1)[0];
     if (b.huidig >= b.lijst.length) b.huidig = 0;
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Speler verwijderd')
-        .setDescription(`**${verwijderd.naam}** is verwijderd uit de rotatie.${b.lijst.length > 0 ? `\n\n${game.buildBeurtenLijstTekst(guildId)}` : ''}`).setTimestamp()],
+        .setDescription(kapAf(`**${verwijderd.naam}** is verwijderd uit de rotatie.${b.lijst.length > 0 ? `\n\n${game.buildBeurtenLijstTekst(guildId)}` : ''}`, LIMIET.beschrijving)).setTimestamp()],
     });
     return;
   }
 
   if (sub === 'lijst') {
     if (b.lijst.length === 0) {
-      await interaction.reply({ content: 'De rotatie is leeg. Voeg spelers toe met `/beurt toevoegen`.', ephemeral: true });
+      await interaction.reply({ content: 'De rotatie is leeg. Voeg spelers toe met `/beurt toevoegen`.', flags: MessageFlags.Ephemeral });
       return;
     }
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('🔄 Beurtrotatie').setDescription(game.buildBeurtenLijstTekst(guildId)).setTimestamp()],
+      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('🔄 Beurtrotatie').setDescription(kapAf(game.buildBeurtenLijstTekst(guildId), LIMIET.beschrijving)).setTimestamp()],
     });
     return;
   }
@@ -74,13 +75,13 @@ export async function execute(interaction, { game }) {
 
   if (sub === 'volgende') {
     if (b.lijst.length === 0) {
-      await interaction.reply({ content: 'De rotatie is leeg.', ephemeral: true });
+      await interaction.reply({ content: 'De rotatie is leeg.', flags: MessageFlags.Ephemeral });
       return;
     }
     const volgende = game.advanceerBeurt(guildId);
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('🔄 Volgende speler')
-        .setDescription(`Het is nu **${volgende.naam}**'s beurt!\n\n${game.buildBeurtenLijstTekst(guildId)}`).setTimestamp()],
+        .setDescription(kapAf(`Het is nu **${volgende.naam}**'s beurt!\n\n${game.buildBeurtenLijstTekst(guildId)}`, LIMIET.beschrijving)).setTimestamp()],
     });
   }
 }

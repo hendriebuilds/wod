@@ -101,6 +101,9 @@ export const CATEGORIEEN = {
 
 export const STANDAARD_CATEGORIE = 'algemeen';
 
+// Maximale lengte van nieuwe invoer (tekens); gelijk houden met maxLength in het panel
+export const MAX_LENGTE = { vraag: 500, stelling: 300 };
+
 // '' of null → standaard; anders getrimd en in kleine letters
 export function normaliseerCategorie(waarde) {
   const c = typeof waarde === 'string' ? waarde.trim().toLowerCase() : '';

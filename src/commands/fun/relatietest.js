@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('relatietest')
@@ -14,15 +14,15 @@ export async function execute(interaction, { game, embeds }) {
   const targetLid = interaction.options.getMember('speler');
 
   if (targetUser.id === userId) {
-    await interaction.reply({ content: '❌ Je kunt geen relatietest doen met jezelf!', ephemeral: true });
+    await interaction.reply({ content: '❌ Je kunt geen relatietest doen met jezelf!', flags: MessageFlags.Ephemeral });
     return;
   }
   if (targetUser.bot) {
-    await interaction.reply({ content: '❌ Je kunt geen relatietest doen met een bot!', ephemeral: true });
+    await interaction.reply({ content: '❌ Je kunt geen relatietest doen met een bot!', flags: MessageFlags.Ephemeral });
     return;
   }
   if (game.relatieSpelers.has(userId) || game.relatieSpelers.has(targetUser.id)) {
-    await interaction.reply({ content: '❌ Eén van jullie doet al mee aan een relatietest.', ephemeral: true });
+    await interaction.reply({ content: '❌ Eén van jullie doet al mee aan een relatietest.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -44,7 +44,7 @@ export async function execute(interaction, { game, embeds }) {
   game.relatieSpelers.set(userId, sessionId);
   game.relatieSpelers.set(targetUser.id, sessionId);
 
-  await interaction.reply({ embeds: [embeds.buildRelatieVraagEmbed(0, initiatorNaam)], components: [embeds.buildRelatieButtons(sessionId)], ephemeral: true });
+  await interaction.reply({ embeds: [embeds.buildRelatieVraagEmbed(0, initiatorNaam)], components: [embeds.buildRelatieButtons(sessionId)], flags: MessageFlags.Ephemeral });
   await interaction.followUp({
     embeds: [new EmbedBuilder()
       .setColor(0xeb459e)

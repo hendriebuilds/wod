@@ -116,9 +116,13 @@ Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrep
 
 ### CSV-import
 
-Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `algemeen`) en moet `algemeen`, `vrienden`, `koppels`, `feest` of `18+` zijn (hoofdletters maken niet uit). Regels met een onbekend type, een lege tekst of een onbekende categorie (bijv. een eigen categorie als `spicy`) tellen als ongeldig en worden niet geïmporteerd. Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen. Na de import zie je hoeveel vragen er zijn toegevoegd, overgeslagen en ongeldig.
+Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `algemeen`) en moet `algemeen`, `vrienden`, `koppels`, `feest` of `18+` zijn (hoofdletters maken niet uit). Regels met een onbekend type, een lege tekst, een tekst van meer dan 500 tekens of een onbekende categorie (bijv. een eigen categorie als `spicy`) tellen als ongeldig en worden niet geïmporteerd. Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen. Na de import zie je hoeveel vragen er zijn toegevoegd, overgeslagen en ongeldig.
 
 Bestaande vragen met een categorie buiten deze lijst blijven werken. Het panel markeert ze met ⚠️; kies bij het bewerken een geldige categorie.
+
+### Maximale lengte
+
+Een vraag of doe-opdracht mag maximaal 500 tekens zijn, een "Nooit heb ik…"-stelling maximaal 300. Dat geldt in het panel, bij de CSV-import, bij `/voeg-toe` en bij `/nooit stelling:`. Bestaande teksten die langer zijn blijven staan en worden in Discord afgekapt getoond (eindigend op `…`). In het panel kun je ze alleen opslaan als je ze inkort.
 
 ```csv
 type,tekst,categorie

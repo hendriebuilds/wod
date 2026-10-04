@@ -1,7 +1,9 @@
+import { MessageFlags } from 'discord.js';
+
 export async function replyError(interaction, err, label) {
   console.error(`❌ Fout in ${label} (guild ${interaction.guildId ?? '-'}):`, err);
   if (!interaction.isRepliable()) return;
-  const payload = { content: '❌ Er ging iets mis. Probeer het nog eens.', ephemeral: true };
+  const payload = { content: '❌ Er ging iets mis. Probeer het nog eens.', flags: MessageFlags.Ephemeral };
   try {
     if (interaction.replied || interaction.deferred) await interaction.followUp(payload);
     else await interaction.reply(payload);

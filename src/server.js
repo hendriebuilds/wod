@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { ChannelType, DiscordAPIError, PermissionFlagsBits } from 'discord.js';
 import { db, stmts, dbGetInstellingen } from './database.js';
-import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo, CATEGORIEEN, normaliseerCategorie, isGeldigeCategorie } from './game.js';
+import { sessieCache, getSessieCache, saveSessieCache, getLevelInfo, CATEGORIEEN, normaliseerCategorie, isGeldigeCategorie, MAX_LENGTE } from './game.js';
 import { config, slaConfigOp, isSuperAdmin } from './config.js';
 import { SqliteStore } from './sessionStore.js';
 
@@ -263,6 +263,7 @@ app.post('/api/vragen', requireAuth, requireGuild, (req, res) => {
   if (!['waarheid', 'doen'].includes(type) || typeof tekst !== 'string' || !tekst.trim()) {
     return res.status(400).json({ error: 'Ongeldige invoer.' });
   }
+  if (tekst.trim().length > MAX_LENGTE.vraag) return res.status(400).json({ error: 'Tekst is te lang.', code: 'te_lang' });
   const cat = normaliseerCategorie(categorie);
   if (!isGeldigeCategorie(cat)) return res.status(400).json({ error: 'Onbekende categorie.', code: 'ongeldige_categorie' });
   stmts.insertVraag.run(guildId, type, tekst.trim(), cat, dmModus ? 1 : 0);
@@ -274,7 +275,8 @@ app.put('/api/vragen/:id', requireAuth, requireGuild, (req, res) => {
   const id = parseInt(req.params.id);
   const { tekst, categorie, dmModus } = req.body;
   if (isNaN(id) || typeof tekst !== 'string' || !tekst.trim()) return res.status(400).json({ error: 'Ongeldige invoer.' });
-  const vraag = db.prepare('SELECT categorie FROM vragen WHERE id = ? AND guild_id = ?').get(id, guildId);
+  if (tekst.trim().length > MAX_LENGTE.vraag) return res.status(400).json({ error: 'Tekst is te lang.', code: 'te_lang' });
+  const vraag =db.prepare('SELECT categorie FROM vragen WHERE id = ? AND guild_id = ?').get(id, guildId);
   if (!vraag) return res.status(404).json({ error: 'Vraag niet gevonden.' });
   // Zonder categorie blijft de huidige staan (ook een oude, onbekende)
   let cat = vraag.categorie;
@@ -366,7 +368,7 @@ app.post('/api/vragen/import', requireAuth, requireGuild, (req, res) => {
         const type = row[typeIdx]?.toLowerCase().trim();
         const tekst = row[tekstIdx]?.trim();
         const categorie = normaliseerCategorie(catIdx !== -1 ? row[catIdx] : '');
-        if (!tekst || !['waarheid', 'doen'].includes(type) || !isGeldigeCategorie(categorie)) { ongeldig++; continue; }
+        if (!tekst || tekst.length > MAX_LENGTE.vraag || !['waarheid', 'doen'].includes(type) || !isGeldigeCategorie(categorie)) { ongeldig++; continue; }
         const r = stmts.insertVraag.run(guildId, type, tekst, categorie, 0);
         if (r.changes === 1) { toegevoegd++; } else { overgeslagen++; }
       }
@@ -483,7 +485,8 @@ app.get('/api/nooit', requireAuth, requireGuild, (req, res) => {
 
 app.post('/api/nooit', requireAuth, requireGuild, (req, res) => {
   const { tekst } = req.body;
-  if (!tekst?.trim()) return res.status(400).json({ error: 'Tekst is verplicht.' });
+  if (typeof tekst !== 'string' || !tekst.trim()) return res.status(400).json({ error: 'Tekst is verplicht.' });
+  if (tekst.trim().length > MAX_LENGTE.stelling) return res.status(400).json({ error: 'Tekst is te lang.', code: 'te_lang' });
   stmts.insertNooit.run(req.session.activeGuildId, tekst.trim());
   res.json({ ok: true });
 });
@@ -491,7 +494,8 @@ app.post('/api/nooit', requireAuth, requireGuild, (req, res) => {
 app.put('/api/nooit/:id', requireAuth, requireGuild, (req, res) => {
   const id = parseInt(req.params.id);
   const { tekst } = req.body;
-  if (isNaN(id) || !tekst?.trim()) return res.status(400).json({ error: 'Ongeldige invoer.' });
+  if (isNaN(id) || typeof tekst !== 'string' || !tekst.trim()) return res.status(400).json({ error: 'Ongeldige invoer.' });
+  if (tekst.trim().length > MAX_LENGTE.stelling) return res.status(400).json({ error: 'Tekst is te lang.', code: 'te_lang' });
   const result = stmts.updateNooit.run(tekst.trim(), id, req.session.activeGuildId);
   if (result.changes === 0) return res.status(404).json({ error: 'Stelling niet gevonden.' });
   res.json({ ok: true });

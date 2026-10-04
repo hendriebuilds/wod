@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('reload')
@@ -24,6 +24,6 @@ export async function execute(interaction, { stmts, game }) {
       .setTitle('✅ Vragen gereset')
       .setDescription(`Gebruikte vragen gereset.\n\n📋 **${waarheidCount}** waarheidsvragen\n🎯 **${doenCount}** doe-opdrachten`)
       .setTimestamp()],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }

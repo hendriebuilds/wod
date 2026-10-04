@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('achievements')
@@ -10,5 +10,5 @@ export async function execute(interaction, { stmts, embeds }) {
   const user = interaction.member ?? interaction.user;
   const userNaam = user.displayName ?? interaction.user.username;
   const behaald = stmts.getUserAchievements.all(guildId, userId);
-  await interaction.reply({ embeds: [embeds.buildAchievementsEmbed(guildId, userId, userNaam, behaald)], ephemeral: true });
+  await interaction.reply({ embeds: [embeds.buildAchievementsEmbed(guildId, userId, userNaam, behaald)], flags: MessageFlags.Ephemeral });
 }

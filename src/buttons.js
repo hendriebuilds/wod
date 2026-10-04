@@ -1,4 +1,4 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import * as embeds from './embeds.js';
 import { isGuildAdmin, GEEN_RECHTEN } from './permissions.js';
 import { achievementEmoji } from './game.js';
@@ -10,7 +10,7 @@ import { parseRondeKnop, claimBericht, geefBerichtVrij, kiesVraag, stuurVraag, g
 
 async function notifyAchievements(interaction, achievements) {
   for (const naam of achievements) {
-    await interaction.followUp({ content: `${achievementEmoji(naam)} **Achievement behaald:** ${naam}!`, ephemeral: true });
+    await interaction.followUp({ content: `${achievementEmoji(naam)} **Achievement behaald:** ${naam}!`, flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -34,11 +34,11 @@ async function geefPunten(interaction, game, speler, delta) {
 
 async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
   if (ronde.legacy) {
-    await interaction.reply({ content: '⌛ Deze ronde is van vóór een update. Start een nieuwe met /wod.', ephemeral: true });
+    await interaction.reply({ content: '⌛ Deze ronde is van vóór een update. Start een nieuwe met /wod.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (ronde.spelerId !== 'open' && interaction.user.id !== ronde.spelerId) {
-    await interaction.reply({ content: `🙅 Het is de beurt van <@${ronde.spelerId}>.`, ephemeral: true, allowedMentions: { parse: [] } });
+    await interaction.reply({ content: `🙅 Het is de beurt van <@${ronde.spelerId}>.`, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
   const messageId = interaction.message.id;
@@ -67,7 +67,7 @@ async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
     }
     if (!vraag) {
       geefBerichtVrij(messageId);
-      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), ephemeral: true });
+      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), flags: MessageFlags.Ephemeral });
       return;
     }
     const update = { components: [embeds.buildDisabledKiesButtons(speler.id)] };
@@ -83,7 +83,7 @@ async function handleRondeKnop(interaction, ronde, { stmts, game, embeds }) {
     const vraag = kiesVraag(guildId, channelId, type);
     if (!vraag) {
       geefBerichtVrij(messageId);
-      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), ephemeral: true });
+      await interaction.reply({ content: geenVraagMelding(guildId, channelId, type), flags: MessageFlags.Ephemeral });
       return;
     }
     if (ronde.actie === 'reroll') {
@@ -123,7 +123,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
   const user = interaction.member ?? interaction.user;
 
   if (game.inCooldown(interaction.user.id, guildId)) {
-    await interaction.reply({ content: '⏳ Rustig aan! Even wachten…', ephemeral: true });
+    await interaction.reply({ content: '⏳ Rustig aan! Even wachten…', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -142,19 +142,19 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const actie = delen[1];
     const sessionId = delen.slice(2).join('_');
     const sessie = game.nooitStemmen.get(sessionId);
-    if (!sessie) { await interaction.reply({ content: 'Stemming verlopen.', ephemeral: true }); return; }
+    if (!sessie) { await interaction.reply({ content: 'Stemming verlopen.', flags: MessageFlags.Ephemeral }); return; }
     const userId = interaction.user.id;
     const naam = interaction.member?.displayName ?? interaction.user.username;
     if (actie === 'sluit') {
       clearTimeout(sessie.timeout);
       game.nooitStemmen.delete(sessionId);
-      const welNamen = [...sessie.wel.values()].join(', ') || 'niemand';
-      const nooitNamen = [...sessie.nooit.values()].join(', ') || 'niemand';
+      const welNamen = embeds.naamLijst(sessie.wel.values()) || 'niemand';
+      const nooitNamen = embeds.naamLijst(sessie.nooit.values()) || 'niemand';
       await interaction.update({
         embeds: [new EmbedBuilder()
           .setColor(0xfee75c)
           .setTitle('🍺 Nooit heb ik... — Uitslag')
-          .setDescription(`**${sessie.stelling}**`)
+          .setDescription(`**${embeds.kapAf(sessie.stelling, embeds.LIMIET.beschrijving - 10)}**`)
           .addFields(
             { name: `🍺 Wel gedaan (${sessie.wel.size})`, value: welNamen, inline: true },
             { name: `✋ Nooit gedaan (${sessie.nooit.size})`, value: nooitNamen, inline: true }
@@ -164,7 +164,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       });
       return;
     }
-    if (actie !== 'wel' && actie !== 'nooit') { await interaction.reply({ content: '❌ Ongeldige knop.', ephemeral: true }); return; }
+    if (actie !== 'wel' && actie !== 'nooit') { await interaction.reply({ content: '❌ Ongeldige knop.', flags: MessageFlags.Ephemeral }); return; }
     // Stemmen, uitzetten en wisselen kan onbeperkt; punten alleen voor de eerste stem.
     const gekozen = sessie[actie];
     const ander = actie === 'wel' ? sessie.nooit : sessie.wel;
@@ -195,7 +195,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       await interaction.update({ content: '✅ Test voltooid! Je resultaat wordt zo geplaatst...', embeds: [], components: [] });
       const kanaal = client.channels.cache.get(sessie.channelId);
       if (kanaal) await kanaal.send({ embeds: [embeds.buildPersoonlijkheidResultaatEmbed(user, sessie.antwoorden)] });
-      if (rZelfinzicht1.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', ephemeral: true });
+      if (rZelfinzicht1.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', flags: MessageFlags.Ephemeral });
     } else {
       await interaction.update({ embeds: [embeds.buildPersoonlijkheidVraagEmbed(sessie.vraagIndex)], components: [embeds.buildPersoonlijkheidButtons()] });
     }
@@ -209,20 +209,20 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
     const actie = delen[1];
     const sessionId = delen.slice(2).join('_');
     const sessie = game.relatieSessies.get(sessionId);
-    if (!sessie) { await interaction.reply({ content: '❌ Sessie verlopen.', ephemeral: true }); return; }
+    if (!sessie) { await interaction.reply({ content: '❌ Sessie verlopen.', flags: MessageFlags.Ephemeral }); return; }
     const userId = interaction.user.id;
     if (actie === 'start') {
-      if (userId !== sessie.speler2.id) { await interaction.reply({ content: '❌ Deze uitdaging is niet voor jou.', ephemeral: true }); return; }
+      if (userId !== sessie.speler2.id) { await interaction.reply({ content: '❌ Deze uitdaging is niet voor jou.', flags: MessageFlags.Ephemeral }); return; }
       await interaction.update({
         embeds: [new EmbedBuilder().setColor(0xeb459e).setTitle('💑 Relatietest gestart!').setDescription(`**${sessie.speler2.naam}** doet mee! De uitslag volgt zodra jullie allebei klaar zijn.`)],
         components: [],
       });
-      await interaction.followUp({ embeds: [embeds.buildRelatieVraagEmbed(0, sessie.speler2.naam)], components: [embeds.buildRelatieButtons(sessionId)], ephemeral: true });
+      await interaction.followUp({ embeds: [embeds.buildRelatieVraagEmbed(0, sessie.speler2.naam)], components: [embeds.buildRelatieButtons(sessionId)], flags: MessageFlags.Ephemeral });
       return;
     }
     const isSpeler1 = userId === sessie.speler1.id;
     const isSpeler2 = userId === sessie.speler2.id;
-    if (!isSpeler1 && !isSpeler2) { await interaction.reply({ content: '❌ Jij doet niet mee aan deze relatietest.', ephemeral: true }); return; }
+    if (!isSpeler1 && !isSpeler2) { await interaction.reply({ content: '❌ Jij doet niet mee aan deze relatietest.', flags: MessageFlags.Ephemeral }); return; }
     const speler = isSpeler1 ? sessie.speler1 : sessie.speler2;
     speler.antwoorden.push(actie === 'A' ? 'A' : 'B');
     if (speler.antwoorden.length >= game.RELATIE_VRAGEN.length) {
@@ -280,7 +280,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       await interaction.update({ content: '✅ Test voltooid! Je uitslag wordt zo geplaatst...', embeds: [], components: [] });
       const kanaal = client.channels.cache.get(sessie.channelId);
       if (kanaal) await kanaal.send({ embeds: [embeds.buildLiefdestaalResultaatEmbed(user, sessie.antwoorden)] });
-      if (rZelfinzicht2.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', ephemeral: true });
+      if (rZelfinzicht2.changes > 0) await interaction.followUp({ content: '🧠 **Achievement behaald:** Zelfinzicht!', flags: MessageFlags.Ephemeral });
     } else {
       await interaction.update({ embeds: [embeds.buildLiefdestaalVraagEmbed(sessie.vraagIndex)], components: [embeds.buildLiefdestaalButtons()] });
     }
@@ -292,7 +292,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
   if (interaction.customId.startsWith('verwijder_ja_')) {
     if (!isGuildAdmin(interaction)) { await interaction.reply(GEEN_RECHTEN); return; }
     const vraagId = parseInt(interaction.customId.replace('verwijder_ja_', ''), 10);
-    if (Number.isNaN(vraagId)) { await interaction.reply({ content: '❌ Ongeldige knop.', ephemeral: true }); return; }
+    if (Number.isNaN(vraagId)) { await interaction.reply({ content: '❌ Ongeldige knop.', flags: MessageFlags.Ephemeral }); return; }
     const vraag = db.prepare('SELECT * FROM vragen WHERE id = ? AND guild_id = ?').get(vraagId, guildId);
     if (!vraag) {
       await interaction.update({
@@ -314,7 +314,7 @@ export async function handleButton(interaction, { client, db, stmts, game, embed
       embeds: [new EmbedBuilder()
         .setColor(0x57f287)
         .setTitle('🗑️ Verwijderd')
-        .setDescription(`Vraag verwijderd:\n\n> ${vraag.tekst}`)
+        .setDescription(embeds.kapAf(`Vraag verwijderd:\n\n> ${vraag.tekst}`, embeds.LIMIET.beschrijving))
         .setTimestamp()],
       components: [],
     });

@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api.js';
 import { useLanguage } from '../LanguageContext.jsx';
 
+// Gelijk houden met MAX_LENGTE.vraag in src/game.js
+const MAX_TEKST = 500;
+
 // Gelijk houden met CATEGORIEEN in src/game.js
 const CATEGORIEEN = ['algemeen', 'vrienden', 'koppels', 'feest', '18+'];
 
@@ -165,6 +168,7 @@ export default function Vragen() {
       <form className="add-form" onSubmit={toevoegen}>
         <input
           className="form-input"
+          maxLength={MAX_TEKST}
           placeholder={tab === 'waarheid' ? t('vragen.placeholderWaarheid') : t('vragen.placeholderDoen')}
           value={nieuwTekst}
           onChange={e => setNieuwTekst(e.target.value)}
@@ -218,6 +222,7 @@ export default function Vragen() {
                 <>
                   <input
                     className="form-input"
+                    maxLength={MAX_TEKST}
                     value={editTekst}
                     onChange={e => setEditTekst(e.target.value)}
                     onKeyDown={e => {

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import './src/env.js';
-import { Client, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, MessageFlags } from 'discord.js';
 import { readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -93,7 +93,7 @@ client.on('interactionCreate', async (interaction) => {
   try {
     if (!interaction.guildId) {
       if (interaction.isRepliable()) {
-        await interaction.reply({ content: '❌ Deze bot werkt alleen in servers.', ephemeral: true });
+        await interaction.reply({ content: '❌ Deze bot werkt alleen in servers.', flags: MessageFlags.Ephemeral });
       }
       return;
     }

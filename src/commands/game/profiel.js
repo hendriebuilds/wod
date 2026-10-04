@@ -20,5 +20,5 @@ export async function execute(interaction, { stmts, embeds }) {
   }
   const achievements = stmts.getUserAchievements.all(guildId, userId);
 
-  await interaction.reply({ embeds: [embeds.buildProfielEmbed(row, achievements, targetUser)], ephemeral: false });
+  await interaction.reply({ embeds: [embeds.buildProfielEmbed(row, achievements, targetUser)] });
 }

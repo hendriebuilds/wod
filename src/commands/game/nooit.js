@@ -1,15 +1,21 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { getRandomNooit } from '../../database.js';
+import { MAX_LENGTE } from '../../game.js';
 
 export const data = new SlashCommandBuilder()
   .setName('nooit')
   .setDescription("Doe een ronde 'Nooit heb ik...' met de groep!")
   .addStringOption(opt =>
     opt.setName('stelling').setDescription('De stelling (optioneel, anders kiest de bot er een)').setRequired(false)
+      .setMaxLength(MAX_LENGTE.stelling)
   );
 
 export async function execute(interaction, { game, embeds }) {
   const invoer = interaction.options.getString('stelling');
+  if (invoer && invoer.trim().length > MAX_LENGTE.stelling) {
+    await interaction.reply({ content: `❌ Een stelling mag maximaal ${MAX_LENGTE.stelling} tekens zijn.`, flags: MessageFlags.Ephemeral });
+    return;
+  }
   const stelling = invoer?.trim() || getRandomNooit(interaction.guildId);
   const sessionId = interaction.id;
   const timeout = setTimeout(() => game.nooitStemmen.delete(sessionId), 2 * 60 * 60 * 1000);

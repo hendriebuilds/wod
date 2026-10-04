@@ -119,13 +119,13 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Categorie niet gevalideerd** (v1.10.1)
   Panel, API en CSV accepteren elke tekst als categorie. De vaste lijst staat sinds v1.10.0 op één plek (`CATEGORIEEN` in `src/game.js`, nu alleen voor weergave); de API en import moeten daarop controleren.
 
-- [ ] `S` **Lange vragen breken de embed**
+- [x] `S` **Lange vragen breken de embed** (v1.10.1; max. 500/300 tekens, `kapAf()` bij tonen)
   Vragen en stellingen hebben geen maximale lengte. Een lange tekst plus de tekst eromheen gaat over de 4096 tekens van een embed-beschrijving, en een lange naam over de 1024 van een veld (uitslag `/nooit`). Maximale lengte instellen bij invoer (command, panel, CSV) en veilig afkappen bij tonen.
 
 - [ ] `S` **Beurtrotatie per server in plaats van per sessie**
   `beurtenMap` gebruikt alleen `guildId`. Met meerdere sessies in verschillende kanalen delen die één rotatie. Sleutel per kanaal of per sessie, en opslaan in de database (nu weg na een herstart).
 
-- [ ] `S` **`ephemeral: true` is verouderd**
+- [x] `S` **`ephemeral: true` is verouderd** (v1.10.1)
   Vervangen door `flags: MessageFlags.Ephemeral` (discord.js 14.x geeft een waarschuwing).
 
 - [x] `S` **Veel dubbele code in knoppen en commands** (v1.10.0)
