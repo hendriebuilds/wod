@@ -346,6 +346,12 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **Versie in het panel**
   Versienummer uit `VERSION` in de zijbalk of footer.
 
+- [ ] `S` **Invite-link voor de bot op de pagina Servers**
+  Alleen voor superadmins: een knop "Bot uitnodigen" die de OAuth2-invite-link toont en kopieert, zodat je de bot makkelijk aan een nieuwe server toevoegt. Scopes `bot` en `applications.commands`, met `DISCORD_CLIENT_ID` uit de omgeving. De rechten worden in de code berekend met `PermissionFlagsBits`, niet als vast getal: View Channels, Send Messages, Embed Links, en optioneel Manage Channels (alleen nodig voor categoriemappen; keuze met een vinkje). Geen nieuwe API-route nodig als de server de link meestuurt via `GET /api/servers`. Na het toevoegen verschijnt de server vanzelf in de lijst (`guildCreate`).
+
+- [ ] `M` 💡 **Panel-toegang via uitnodiging**
+  Een superadmin of serverbeheerder maakt een uitnodigingslink waarmee iemand zonder *Server beheren* toch het panel van één server mag gebruiken (bijv. een vriend die vragen bijhoudt). Nog te bepalen: rollen (alleen vragen en stellingen, of alles), verlooptijd of eenmalig gebruik, intrekken, en waar je ziet wie toegang heeft. Raakt de toegangscontrole in `requireGuild` en hoort bij het auditlog.
+
 ---
 
 ## ⚙️ Technisch & Infra
