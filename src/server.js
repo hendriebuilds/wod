@@ -31,6 +31,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Healthcheck (Docker/Unraid) ──
+// Vóór de sessie, zodat een check geen sessie aanmaakt. Publiek bereikbaar: geen details, geen logregel.
+app.get('/health', (req, res) => {
+  const klaar = _client?.isReady() ?? false;
+  res.status(klaar ? 200 : 503).json({ status: klaar ? 'ok' : 'starting' });
+});
+
 // ── CSRF: schrijvende verzoeken alleen vanaf het panel zelf ──
 // Geldt voor /api/* en POST /auth/logout. Origin (of anders Referer) moet gelijk
 // zijn aan frontendUrl, die elke keer opnieuw gelezen wordt. Een body moet JSON zijn.
@@ -686,8 +693,18 @@ if (existsSync(adminDist)) {
   app.get('*', (req, res) => res.sendFile(join(adminDist, 'index.html')));
 }
 
+// ── Fouten altijd als JSON (nooit een HTML-pagina met stacktrace) ──
+// Geen headers, cookies of body loggen.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Ongeldige JSON.', code: 'ongeldige_json' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Verzoek te groot.', code: 'te_groot' });
+  console.error(`❌ Fout in ${req.method} ${req.path}:`, err);
+  res.status(500).json({ error: 'Er ging iets mis.', code: 'serverfout' });
+});
+
 export function startServer() {
-  app.listen(ADMIN_PORT, () => {
+  return app.listen(ADMIN_PORT, () => {
     console.log(`✅ Admin panel API draait op http://localhost:${ADMIN_PORT}`);
   });
 }

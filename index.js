@@ -125,5 +125,25 @@ try {
   console.error('Migratie van achievements mislukt:', err);
 }
 
-startServer();
+const server = startServer();
 client.login(process.env.DISCORD_TOKEN);
+
+// ─── Nette afsluiting (docker stop stuurt SIGTERM, daarna na 10 s SIGKILL) ────
+
+let bezigMetAfsluiten = false;
+
+async function sluitAf(signaal) {
+  if (bezigMetAfsluiten) return;
+  bezigMetAfsluiten = true;
+  console.log(`🛑 ${signaal} ontvangen, bot sluit af…`);
+  const noodstop = setTimeout(() => { console.error('⏱️ Afsluiten duurt te lang, geforceerd stoppen.'); process.exit(1); }, 8000);
+  noodstop.unref();
+  try { for (const id of game.sessieCache.keys()) game.saveSessieCache(id); } catch (err) { console.error('❌ Sessies opslaan bij afsluiten mislukt:', err); }
+  try { await new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); }); } catch (err) { console.error('❌ Server sluiten mislukt:', err); }
+  try { await client.destroy(); } catch (err) { console.error('❌ Discord-verbinding sluiten mislukt:', err); }
+  try { db.close(); } catch (err) { console.error('❌ Database sluiten mislukt:', err); }
+  console.log('👋 Afgesloten.');
+  process.exit(0);
+}
+process.on('SIGTERM', () => sluitAf('SIGTERM'));
+process.on('SIGINT', () => sluitAf('SIGINT'));
