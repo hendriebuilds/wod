@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('strafpunten')
@@ -15,15 +15,15 @@ export async function execute(interaction, { stmts, game, embeds }) {
   const reden = (interaction.options.getString('reden') ?? '').trim();
 
   if (speler.bot) {
-    await interaction.reply({ content: '❌ Bots hebben geen punten.', ephemeral: true });
+    await interaction.reply({ content: '❌ Bots hebben geen punten.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (!Number.isInteger(aantal) || aantal < 1 || aantal > 100) {
-    await interaction.reply({ content: '❌ Het aantal moet tussen 1 en 100 liggen.', ephemeral: true });
+    await interaction.reply({ content: '❌ Het aantal moet tussen 1 en 100 liggen.', flags: MessageFlags.Ephemeral });
     return;
   }
   if (!reden) {
-    await interaction.reply({ content: '❌ Geef een reden op.', ephemeral: true });
+    await interaction.reply({ content: '❌ Geef een reden op.', flags: MessageFlags.Ephemeral });
     return;
   }
 

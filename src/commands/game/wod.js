@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('wod')
@@ -13,7 +13,7 @@ export async function execute(interaction, { game, embeds }) {
   let speler;
   if (doelUser) {
     if (doelUser.bot) {
-      await interaction.reply({ content: '❌ Een bot kan geen Waarheid of Doen spelen.', ephemeral: true });
+      await interaction.reply({ content: '❌ Een bot kan geen Waarheid of Doen spelen.', flags: MessageFlags.Ephemeral });
       return;
     }
     const doelLid = interaction.options.getMember('speler');

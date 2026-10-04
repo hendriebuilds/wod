@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import * as game from './game.js';
 import * as embeds from './embeds.js';
 
@@ -96,7 +97,7 @@ export async function stuurVraag(interaction, { type, speler, variant, vraag = n
 
   if (!vraag) vraag = kiesVraag(guildId, interaction.channelId, type);
   if (!vraag) {
-    await verstuur({ content: geenVraagMelding(guildId, interaction.channelId, type), ephemeral: true });
+    await verstuur({ content: geenVraagMelding(guildId, interaction.channelId, type), flags: MessageFlags.Ephemeral });
     return false;
   }
 

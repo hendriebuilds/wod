@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('lijst')
@@ -13,8 +13,8 @@ export async function execute(interaction, { embeds }) {
   const type = interaction.options.getString('type');
   if (!type) {
     const alleEmbeds = [...embeds.buildLijstEmbeds(interaction.guildId, 'waarheid'), ...embeds.buildLijstEmbeds(interaction.guildId, 'doen')].slice(0, 10);
-    await interaction.reply({ embeds: alleEmbeds, ephemeral: true });
+    await interaction.reply({ embeds: alleEmbeds, flags: MessageFlags.Ephemeral });
   } else {
-    await interaction.reply({ embeds: embeds.buildLijstEmbeds(interaction.guildId, type), ephemeral: true });
+    await interaction.reply({ embeds: embeds.buildLijstEmbeds(interaction.guildId, type), flags: MessageFlags.Ephemeral });
   }
 }

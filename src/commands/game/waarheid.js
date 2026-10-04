@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { stuurVraag } from '../../ronde.js';
 
 export const data = new SlashCommandBuilder()
@@ -17,7 +17,7 @@ export async function execute(interaction, { stmts, game }) {
   if (nummer !== null) {
     const vragen = stmts.getVragen.all(guildId, 'waarheid');
     if (nummer > vragen.length) {
-      await interaction.reply({ content: `❌ Er is geen waarheidsvraag met nummer ${nummer}. Gebruik \`/lijst\` om de nummers te zien.`, ephemeral: true });
+      await interaction.reply({ content: `❌ Er is geen waarheidsvraag met nummer ${nummer}. Gebruik \`/lijst\` om de nummers te zien.`, flags: MessageFlags.Ephemeral });
       return;
     }
     vraag = vragen[nummer - 1];
@@ -25,7 +25,7 @@ export async function execute(interaction, { stmts, game }) {
     if (catFilter && vraag.categorie !== catFilter) {
       await interaction.reply({
         content: `❌ Vraag ${nummer} hoort bij ${game.categorieLabel(vraag.categorie)}. In dit kanaal kunnen alleen vragen uit ${game.categorieLabel(catFilter)}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }

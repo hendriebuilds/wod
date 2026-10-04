@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api.js';
 import { useLanguage } from '../LanguageContext.jsx';
 
+// Gelijk houden met MAX_LENGTE.stelling in src/game.js
+const MAX_TEKST = 300;
+
 function Feedback({ feedback }) {
   if (!feedback) return null;
   return (
@@ -84,6 +87,7 @@ export default function Nooit() {
       <form className="add-form" onSubmit={toevoegen}>
         <input
           className="form-input"
+          maxLength={MAX_TEKST}
           placeholder={t('nooit.placeholder')}
           value={nieuwTekst}
           onChange={e => setNieuwTekst(e.target.value)}
@@ -104,6 +108,7 @@ export default function Nooit() {
                 <>
                   <input
                     className="form-input"
+                    maxLength={MAX_TEKST}
                     value={editTekst}
                     onChange={e => setEditTekst(e.target.value)}
                     onKeyDown={e => {

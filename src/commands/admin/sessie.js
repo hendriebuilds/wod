@@ -1,10 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
+import { kapAf, naamLijst, LIMIET } from '../../embeds.js';
 
 export const data = new SlashCommandBuilder()
   .setName('sessie')
   .setDescription('Beheer WoD-spelsessies — meerdere tegelijk mogelijk')
   .addSubcommand(sub => sub.setName('starten').setDescription('Start een nieuwe sessie in dit kanaal')
-    .addStringOption(opt => opt.setName('naam').setDescription('Naam voor de sessie').setRequired(false)))
+    .addStringOption(opt => opt.setName('naam').setDescription('Naam voor de sessie').setRequired(false).setMaxLength(100)))
   .addSubcommand(sub => sub.setName('lijst').setDescription('Bekijk alle sessies op deze server'))
   .addSubcommand(sub => sub.setName('wisselen').setDescription('Activeer een andere sessie in dit kanaal')
     .addIntegerOption(opt => opt.setName('id').setDescription('Sessie ID (zie /sessie lijst)').setRequired(true)))
@@ -22,7 +23,7 @@ export async function execute(interaction, { stmts, game }) {
   if (sub === 'starten') {
     const naam = interaction.options.getString('naam');
     const count = stmts.countSessies.get(guildId).cnt;
-    const sessieNaam = naam?.trim() || `Sessie ${count + 1}`;
+    const sessieNaam = kapAf(naam?.trim() || `Sessie ${count + 1}`, 100);
     const result = stmts.insertSessie.run(guildId, interaction.channelId, sessieNaam);
     const sessieId = result.lastInsertRowid;
     stmts.upsertActieveSessieLink.run(guildId, interaction.channelId, sessieId);
@@ -37,7 +38,7 @@ export async function execute(interaction, { stmts, game }) {
   if (sub === 'lijst') {
     const sessies = stmts.getSessiesGuild.all(guildId);
     if (sessies.length === 0) {
-      await interaction.reply({ content: 'Geen sessies gevonden. Gebruik `/wod` of `/sessie starten` om een sessie te beginnen.', ephemeral: true });
+      await interaction.reply({ content: 'Geen sessies gevonden. Gebruik `/wod` of `/sessie starten` om een sessie te beginnen.', flags: MessageFlags.Ephemeral });
       return;
     }
     const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
@@ -47,8 +48,8 @@ export async function execute(interaction, { stmts, game }) {
       return `${emoji} \`#${s.id}\` **${s.naam}** — ${s.aantal_waarheid + s.aantal_doen} rondes (<#${s.channel_id}>)${actief}`;
     });
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('📋 Sessie-overzicht').setDescription(lines.join('\n')).setTimestamp()],
-      ephemeral: true,
+      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('📋 Sessie-overzicht').setDescription(naamLijst(lines, LIMIET.beschrijving, '\n')).setTimestamp()],
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -57,11 +58,11 @@ export async function execute(interaction, { stmts, game }) {
     const id = interaction.options.getInteger('id');
     const sessie = stmts.getSessieById.get(id);
     if (!sessie || sessie.guild_id !== guildId) {
-      await interaction.reply({ content: `❌ Sessie #${id} niet gevonden op deze server.`, ephemeral: true });
+      await interaction.reply({ content: `❌ Sessie #${id} niet gevonden op deze server.`, flags: MessageFlags.Ephemeral });
       return;
     }
     if (sessie.status === 'beeindigd') {
-      await interaction.reply({ content: `❌ Sessie #${id} is al definitief beëindigd.`, ephemeral: true });
+      await interaction.reply({ content: `❌ Sessie #${id} is al definitief beëindigd.`, flags: MessageFlags.Ephemeral });
       return;
     }
     if (sessie.status === 'gepauzeerd') stmts.updateSessieStatus.run('actief', id);
@@ -82,7 +83,7 @@ export async function execute(interaction, { stmts, game }) {
   if (sub === 'pauzeren') {
     const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
     if (!link) {
-      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal.', ephemeral: true });
+      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal.', flags: MessageFlags.Ephemeral });
       return;
     }
     game.saveSessieCache(link.sessie_id);
@@ -101,7 +102,7 @@ export async function execute(interaction, { stmts, game }) {
     if (id) {
       const sessie = stmts.getSessieById.get(id);
       if (!sessie || sessie.guild_id !== guildId || sessie.status !== 'gepauzeerd') {
-        await interaction.reply({ content: `❌ Geen gepauzeerde sessie met ID \`${id}\` gevonden.`, ephemeral: true });
+        await interaction.reply({ content: `❌ Geen gepauzeerde sessie met ID \`${id}\` gevonden.`, flags: MessageFlags.Ephemeral });
         return;
       }
       stmts.updateSessieStatus.run('actief', id);
@@ -114,14 +115,14 @@ export async function execute(interaction, { stmts, game }) {
     } else {
       const gepauzeerd = stmts.getSessiesGuild.all(guildId).filter(s => s.status === 'gepauzeerd');
       if (gepauzeerd.length === 0) {
-        await interaction.reply({ content: 'Geen gepauzeerde sessies om te hervatten.', ephemeral: true });
+        await interaction.reply({ content: 'Geen gepauzeerde sessies om te hervatten.', flags: MessageFlags.Ephemeral });
         return;
       }
       const lines = gepauzeerd.map(s => `🟡 \`#${s.id}\` **${s.naam}** — ${s.aantal_waarheid + s.aantal_doen} rondes`);
       await interaction.reply({
         embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle('⏸️ Gepauzeerde sessies')
-          .setDescription(lines.join('\n') + '\n\nGebruik `/sessie hervatten [id]` om te hervatten.').setTimestamp()],
-        ephemeral: true,
+          .setDescription(naamLijst(lines, LIMIET.beschrijving - 60, '\n') + '\n\nGebruik `/sessie hervatten [id]` om te hervatten.').setTimestamp()],
+        flags: MessageFlags.Ephemeral,
       });
     }
     return;
@@ -130,7 +131,7 @@ export async function execute(interaction, { stmts, game }) {
   if (sub === 'stoppen') {
     const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
     if (!link) {
-      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal.', ephemeral: true });
+      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal.', flags: MessageFlags.Ephemeral });
       return;
     }
     game.saveSessieCache(link.sessie_id);
@@ -148,7 +149,7 @@ export async function execute(interaction, { stmts, game }) {
   if (sub === 'info') {
     const link = stmts.getActieveSessieLink.get(guildId, interaction.channelId);
     if (!link) {
-      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal. Gebruik `/wod` of `/sessie starten` om te beginnen.', ephemeral: true });
+      await interaction.reply({ content: '❌ Geen actieve sessie in dit kanaal. Gebruik `/wod` of `/sessie starten` om te beginnen.', flags: MessageFlags.Ephemeral });
       return;
     }
     const sessie = stmts.getSessieById.get(link.sessie_id);
@@ -157,7 +158,7 @@ export async function execute(interaction, { stmts, game }) {
     const uren = Math.floor(duur / 60);
     const minuten = duur % 60;
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(`📊 ${sessie.naam}`)
+      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(kapAf(`📊 ${sessie.naam}`, LIMIET.titel))
         .addFields(
           { name: '🆔 Sessie ID', value: `${sessie.id}`, inline: true },
           { name: '📺 Kanaal', value: `<#${sessie.channel_id}>`, inline: true },
@@ -166,7 +167,7 @@ export async function execute(interaction, { stmts, game }) {
           { name: '🔵 Waarheid', value: `${cache.aantalWaarheid}`, inline: true },
           { name: '🔴 Doen', value: `${cache.aantalDoen}`, inline: true },
         ).setTimestamp()],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
