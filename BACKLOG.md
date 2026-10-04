@@ -73,6 +73,14 @@ Staat in de code, maar de versie per item is niet meer bekend.
 - [x] Panelsessies in SQLite (ingelogd blijven na een herstart), CSRF-bescherming, CSV-import als JSON
 - [x] Image via GitHub Actions, lock files met `npm ci`, `admin/node_modules` en `admin/dist` uit git, `.dockerignore` aangevuld
 
+## ✅ Uitgebracht in v1.10.1 — Bugs en build bijwerken
+
+- [x] Migraties na alle `CREATE TABLE` via `voegKolomToe()`; duplicaten eenmalig opgeruimd
+- [x] Eén vaste lijst categorieën, standaard `algemeen`, gevalideerd in panel, API, CSV en `/voeg-toe` (nu met optie `categorie`); onbekende categorieën gemarkeerd in het panel
+- [x] Maximale lengte (vraag 500, stelling 300) en veilig afkappen in alle embeds; `MessageFlags.Ephemeral`
+- [x] `NODE_ENV=production`, JSON-foutmeldingen, `GET /health` met Docker-healthcheck, nette afsluiting
+- [x] Actions op Node 24, GitHub Release per versie
+
 ---
 
 ## 🎯 Mogelijke focus-releases
@@ -81,7 +89,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 - **Standaard doorvoeren (patch):** `build-and-push.sh` met controles, `config.json` als volume
 - **Categorieën per kanaal 2.0:** de open items uit 🔞 (18+ alleen in eigen kanalen, meerdere categorieën per kanaal, opt-out)
-- **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen
+- **Timeout & beurten:** timeout, `/rejoin`, beurt overnemen, DM-melding bij uitvallen, beurtrotatie per sessie in de database (zelfde tabel)
 - **AI-vraaggenerator:** Anthropic of Ollama met review-stap
 - **Tweetalige bot:** Engelse berichten en vragen per server
 
@@ -122,11 +130,14 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `S` **Lange vragen breken de embed** (v1.10.1; max. 500/300 tekens, `kapAf()` bij tonen)
   Vragen en stellingen hebben geen maximale lengte. Een lange tekst plus de tekst eromheen gaat over de 4096 tekens van een embed-beschrijving, en een lange naam over de 1024 van een veld (uitslag `/nooit`). Maximale lengte instellen bij invoer (command, panel, CSV) en veilig afkappen bij tonen.
 
-- [ ] `S` **Beurtrotatie per server in plaats van per sessie**
+- [ ] `M` **Beurtrotatie per server in plaats van per sessie** (focus-release "Timeout & beurten")
   `beurtenMap` gebruikt alleen `guildId`. Met meerdere sessies in verschillende kanalen delen die één rotatie. Sleutel per kanaal of per sessie, en opslaan in de database (nu weg na een herstart).
 
 - [x] `S` **`ephemeral: true` is verouderd** (v1.10.1)
   Vervangen door `flags: MessageFlags.Ephemeral` (discord.js 14.x geeft een waarschuwing).
+
+- [x] `S` **Importmelding in het panel hardcoded** (v1.10.1)
+  De melding na een CSV-import stond als Nederlandse tekst in `Vragen.jsx` (tegen harde regel 12). Nu via `t()` met `vragen.importToegevoegd`, `importOvergeslagen` en `importOngeldig`.
 
 - [x] `S` **Veel dubbele code in knoppen en commands** (v1.10.0)
   De afhandeling van waarheid/doen (vraag kiezen, teller ophogen, DM of kanaal, knoppen) staat bijna gelijk op tien plekken in `buttons.js`, `waarheid.js` en `doen.js`. Eén functie `stuurVraag(interaction, type, opties)`. Maakt de 18+- en punten-fixes veel kleiner.
@@ -339,7 +350,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 
 ## ⚙️ Technisch & Infra
 
-- [ ] `S` **`NODE_ENV=production` in het image**
+- [x] `S` **`NODE_ENV=production` in het image** (v1.10.1; met JSON-error-handler)
   Het Dockerfile zet geen `NODE_ENV`. Bij ongeldige JSON of een te grote body (> 2 MB) antwoordt Express dan met zijn standaard HTML-foutpagina, inclusief stacktrace. `ENV NODE_ENV=production` in het Dockerfile, en eventueel een eigen error-handler die JSON teruggeeft (`{ error, code }`).
 
 - [ ] `S` **`build-and-push.sh` volgens de standaard**
@@ -363,7 +374,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **Volume en `DATA_DIR` in de Dockerfile**
   `ENV DATA_DIR=/data` en `VOLUME /data`, zodat de database niet per ongeluk in de container blijft.
 
-- [ ] `S` **Healthcheck in de Dockerfile**
+- [x] `S` **Healthcheck in de Dockerfile** (v1.10.1)
   Op basis van een `GET /health` zonder login.
 
 - [ ] `S` **Container als non-root gebruiker**
@@ -372,7 +383,7 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [ ] `S` **Kleiner image**
   `python3 make g++` zijn alleen nodig om better-sqlite3 te bouwen. In een aparte build-stage installeren en alleen `node_modules` meenemen.
 
-- [ ] `S` **Nette afsluiting**
+- [x] `S` **Nette afsluiting** (v1.10.1)
   Bij `SIGTERM` alle sessie-caches opslaan, de database sluiten en `client.destroy()` aanroepen.
 
 - [ ] `S` **Slash commands niet bij elke start registreren**
@@ -387,10 +398,13 @@ Suggesties om items te bundelen. Vrij te husselen.
 - [x] `M` **GitHub Actions** (v1.10.0)
   `.github/workflows/docker.yml`: controle bij elke push en PR, image bouwen en pushen bij een nieuwe `VERSION` op `main`. `build-and-push.sh` is nu een noodoptie. Echte tests (`node:test`) komen er later bij.
 
-- [ ] `S` **Actions bijwerken naar Node 24**
+- [x] `S` **Actions bijwerken naar Node 24** (v1.10.1; checkout/setup-node v7, buildx/login v4, build-push v7)
   GitHub waarschuwt dat `actions/checkout@v4` en `actions/setup-node@v4` op het verouderde Node 20 draaien (nu nog geforceerd naar Node 24). Overstappen op `@v5`, en de andere `docker/*`-actions controleren op nieuwere versies. `ubuntu-latest` gaat vanaf 19 oktober 2026 naar Ubuntu 26; waarschijnlijk geen gevolgen, wel even controleren.
 
-- [ ] `S` **GitHub Release bij een nieuwe versie**
+- [ ] `M` **Bot naar Node 24**
+  Node 24 is LTS. `node:24-alpine` in beide stages, `node-version: 24` in de workflow, better-sqlite3 opnieuw bouwen en testen. Daarna de stack in CLAUDE.md en de projectinstructies bijwerken.
+
+- [x] `S` **GitHub Release bij een nieuwe versie** (v1.10.1)
   De workflow maakt nu alleen de git-tag `v<versie>` (en daarmee de automatische broncode-zip onder *Tags*). Een echte GitHub Release met de wijzigingen uit het plan of de commit maakt de versiegeschiedenis leesbaarder. Kan met `gh release create` in de job `release`.
 
 - [ ] `M` **Database-back-ups**

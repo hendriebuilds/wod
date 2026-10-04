@@ -50,6 +50,9 @@ Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-U
 - **Restart policy:** gebruik `unless-stopped` of `always`. Bij een onverwachte fout (`uncaughtException`) stopt de bot bewust, zodat Docker hem schoon herstart.
 - **Altijd via `<PANEL-URL>`:** opslaan, verwijderen en uitloggen werken alleen als het panel wordt geopend op het adres uit `frontendUrl` (CSRF-bescherming: de API controleert de `Origin`). Via een ander adres (bijv. rechtstreeks op de poort) kun je wel kijken, maar niets wijzigen; je krijgt dan een 403.
 - **Ingelogd blijven:** panelsessies staan in `bot.db` (tabel `panel_sessies`), dus een herstart of update van de container logt je niet uit. Een sessie verloopt na 24 uur.
+- **Productiemodus:** het image zet `NODE_ENV=production`. Fouten in de API komen altijd als JSON terug (bijv. 400 `ongeldige_json`, 413 `te_groot`, 500 `serverfout`), nooit als HTML-pagina met stacktrace.
+- **Healthcheck:** het image controleert elke 30 seconden `GET /health` op `ADMIN_PORT` (binnen de container). Die route geeft `200 {"status":"ok"}` zodra de bot met Discord verbonden is, en daarvoor `503`. Unraid en `docker ps` tonen de container dan als **healthy**. De route geeft geen verdere details en maakt geen sessie aan.
+- **Nette afsluiting:** bij `docker stop` (SIGTERM) slaat de bot de sessies op, sluit hij de webserver, de Discord-verbinding en de database, en stopt hij binnen 8 seconden (Docker wacht standaard 10). In de log staan `🛑 SIGTERM ontvangen…` en `👋 Afgesloten.`
 - **Startcontrole:** de bot start niet als een verplichte variabele ontbreekt of `SESSION_SECRET` korter is dan 32 tekens. De log noemt welke variabele het is.
 
 ### Omgevingsvariabelen
@@ -269,8 +272,9 @@ Door de CSRF-controle moet `frontendUrl` gelijk zijn aan het adres waarop je het
 GitHub Actions bouwt het image (`.github/workflows/docker.yml`):
 
 - **Bij elke push en pull request** controleert de job `check` of `VERSION` en `package.json` gelijk zijn, of alle JS-bestanden geldig zijn en of het panel bouwt.
-- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Staat de tag er al, dan wordt er niets gebouwd.
-- **Opnieuw bouwen** van dezelfde versie: *Actions* → *Docker image* → *Run workflow* met `force` aan.
+- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Daarna maakt hij onder *Releases* een GitHub Release `v<versie>`, met `updateplannen/v<versie>/00-overzicht.md` als tekst (of automatische notities als dat bestand ontbreekt). Staat de tag er al, dan wordt er niets gebouwd.
+- **Opnieuw bouwen** van dezelfde versie: *Actions* → *Docker image* → *Run workflow* met `force` aan. Ontbreekt de release nog, dan wordt die daarbij alsnog aangemaakt.
+- De actions draaien op Node 24; de controle van de bot gebruikt Node 22, net als het image.
 
 Voorwaarde: het package `wod` op GHCR geeft de repo schrijfrechten (*Package settings* → *Manage Actions access* → repository `hendriebuilds/wod` met rol **Write**).
 

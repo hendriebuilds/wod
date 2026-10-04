@@ -37,7 +37,7 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `admin/src/pages/` — `Login`, `Vragen`, `Nooit`, `Sessies`, `Statistieken`, `Ranglijst`, `Instellingen`, `Configuratie`, `Servers`
 - `admin/src/i18n/` — `nl.js` en `en.js`, dezelfde sleutels
 - `Dockerfile`, `.dockerignore`, `build-and-push.sh` (noodoptie), `config.json`
-- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`)
+- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met `00-overzicht.md`); actions op Node 24, controle met Node 22
 - `package-lock.json`, `admin/package-lock.json` — lock files, altijd meecommitten
 
 Werk deze lijst bij zodra er bestanden bijkomen.
@@ -117,7 +117,10 @@ Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `mig
 - **Instellingen:** `GET/PUT /api/instellingen`, `POST /api/reset-config`, `GET/POST /api/channel-categorie`, `DELETE /api/channel-categorie/:channelId`, `GET /api/kanalen`, `GET /api/categorieen`, `POST /api/categoriemappen/aanmaken`
 - **Configuratie:** `GET/PUT /api/config` (`requireSuperAdmin`; `PUT` valideert beide URL's)
 - **Superadmin:** `GET /api/servers`, `DELETE /api/servers/:guildId` (bot verlaat de server)
+- **Health:** `GET /health` (zonder login), `200 {"status":"ok"}` als de bot verbonden is, anders `503`. Staat vóór de sessie- en CSRF-middleware, geeft geen details (publiek bereikbaar) en logt niets. Gebruikt door de `HEALTHCHECK` in de `Dockerfile`.
 - Alles daarbuiten: `admin/dist` (React-app)
+- **Fouten:** helemaal onderaan `server.js` staat een JSON-error-handler (400 `ongeldige_json`, 413 `te_groot`, 500 `serverfout`). Nieuwe routes geven fouten zelf als JSON terug of via `next(err)`, nooit als HTML. Log daarbij geen headers, cookies of body.
+- **Afsluiten:** `index.js` vangt `SIGTERM`/`SIGINT` af (`sluitAf()`): sessies opslaan, server, Discord en database sluiten, noodstop na 8 s. Nieuwe intervals krijgen `unref()` en schrijven niet meer na `db.close()`.
 
 ## Omgevingsvariabelen
 | Variabele | Beschrijving | Standaard |
@@ -164,7 +167,7 @@ In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>
    - Werk dit bestand bij als structuur, tabellen, instellingen, commands, knoppen, routes of omgevingsvariabelen veranderen.
    - Maak **één commit** met de boodschap `v<versie> — <korte omschrijving>`, bijv. `v1.9.3 — configuratie alleen voor superadmins`, en **push** naar GitHub. Commits van tussenliggende fases heten `v<versie> (fase N/M) — <omschrijving>`.
    - Geef een **samenvatting**: wat er is gebouwd, hoe Hendrie het test (concrete stappen in Discord en het panel), en wat openstaat of is afgeweken van het plan.
-8. **Het image wordt gebouwd door GitHub Actions** (`.github/workflows/docker.yml`) zodra een nieuwe `VERSION` op `main` staat. Controleer na de push onder Actions of de workflow groen is en meld het resultaat in de samenvatting. `build-and-push.sh` is alleen een noodoptie als Actions niet werkt, en dan pas als alles gecommit en gepusht is.
+8. **Het image wordt gebouwd door GitHub Actions** (`.github/workflows/docker.yml`) zodra een nieuwe `VERSION` op `main` staat. De workflow maakt daarna ook de git-tag en een GitHub Release, met `updateplannen/v<versie>/00-overzicht.md` als tekst; zorg dus dat dat overzicht klopt vóór de laatste commit. Controleer na de push onder Actions of de workflow groen is en meld het resultaat in de samenvatting. `build-and-push.sh` is alleen een noodoptie als Actions niet werkt, en dan pas als alles gecommit en gepusht is.
 
 ## Commando's
 Vul deze aan zodra er nieuwe bijkomen.
