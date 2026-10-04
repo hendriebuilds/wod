@@ -388,6 +388,9 @@ body {
   white-space: nowrap;
 }
 
+/* Onbekende categorie (oude data): zonder inline style, zodat deze klasse geldt */
+.cat-badge-ongeldig { border-style: dashed; color: var(--orange); border-color: var(--orange); background: transparent; }
+
 /* ── Toggle switch ── */
 .toggle {
   display: inline-flex;

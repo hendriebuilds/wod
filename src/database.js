@@ -55,16 +55,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessies_guild ON wod_sessies(guild_id);
 `);
 
-try { db.exec('ALTER TABLE instellingen ADD COLUMN auto_categorie_mappen INTEGER NOT NULL DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE instellingen ADD COLUMN categorie_per_chat INTEGER NOT NULL DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE user_levels ADD COLUMN reroll_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE user_levels ADD COLUMN passen_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE user_levels ADD COLUMN rondes_teller INTEGER NOT NULL DEFAULT 0'); } catch {}
-
-// Verwijder bestaande duplicaten (zelfde guild_id + tekst case-insensitive), bewaar laagste id
-db.exec(`DELETE FROM vragen WHERE id NOT IN (SELECT MIN(id) FROM vragen GROUP BY guild_id, LOWER(tekst))`);
-db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vragen_guild_tekst_uniq ON vragen (guild_id, LOWER(tekst))`);
-
 db.exec(`
   CREATE TABLE IF NOT EXISTS channel_categorie (
     guild_id TEXT NOT NULL,
@@ -132,6 +122,35 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_panel_sessies_verloopt ON panel_sessies(verloopt);
 `);
+
+// ── Kolommigraties: altijd ná alle CREATE TABLE-blokken ──
+// Alleen aanroepen met vaste namen uit de code, nooit met invoer van buiten.
+function voegKolomToe(tabel, kolom, definitie) {
+  const kolommen = db.prepare(`PRAGMA table_info(${tabel})`).all().map(k => k.name);
+  if (!kolommen.includes(kolom)) {
+    db.exec(`ALTER TABLE ${tabel} ADD COLUMN ${kolom} ${definitie}`);
+    console.log(`🔧 Migratie: kolom ${tabel}.${kolom} toegevoegd`);
+  }
+}
+
+voegKolomToe('instellingen', 'auto_categorie_mappen', 'INTEGER NOT NULL DEFAULT 0');
+voegKolomToe('instellingen', 'categorie_per_chat', 'INTEGER NOT NULL DEFAULT 0');
+voegKolomToe('user_levels', 'reroll_teller', 'INTEGER NOT NULL DEFAULT 0');
+voegKolomToe('user_levels', 'passen_teller', 'INTEGER NOT NULL DEFAULT 0');
+voegKolomToe('user_levels', 'rondes_teller', 'INTEGER NOT NULL DEFAULT 0');
+
+// Duplicaten (zelfde guild_id + tekst, hoofdletterongevoelig) eenmalig opruimen, laagste id blijft.
+// Daarna voorkomt de unieke index nieuwe duplicaten.
+const heeftUniekeIndex = db.prepare(
+  "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_vragen_guild_tekst_uniq'"
+).get();
+if (!heeftUniekeIndex) {
+  db.transaction(() => {
+    db.exec('DELETE FROM vragen WHERE id NOT IN (SELECT MIN(id) FROM vragen GROUP BY guild_id, LOWER(tekst))');
+    db.exec('CREATE UNIQUE INDEX idx_vragen_guild_tekst_uniq ON vragen (guild_id, LOWER(tekst))');
+  })();
+  console.log('🔧 Migratie: duplicaten opgeruimd en unieke index aangemaakt');
+}
 
 export const stmts = {
   getVragen:              db.prepare('SELECT * FROM vragen WHERE guild_id = ? AND type = ? ORDER BY id'),

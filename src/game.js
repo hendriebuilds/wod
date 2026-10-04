@@ -99,6 +99,18 @@ export const CATEGORIEEN = {
   '18+':    { emoji: '🔞', naam: '18+' },
 };
 
+export const STANDAARD_CATEGORIE = 'algemeen';
+
+// '' of null → standaard; anders getrimd en in kleine letters
+export function normaliseerCategorie(waarde) {
+  const c = typeof waarde === 'string' ? waarde.trim().toLowerCase() : '';
+  return c || STANDAARD_CATEGORIE;
+}
+
+export function isGeldigeCategorie(categorie) {
+  return Object.hasOwn(CATEGORIEEN, categorie);
+}
+
 // Alleen voor weergave, bijv. '🔞 18+'
 export function categorieLabel(categorie) {
   const c = CATEGORIEEN[categorie];
