@@ -42,7 +42,10 @@ wod:
     - "3001:3001"
   volumes:
     - wod_data:/app/data
+    - ./config.json:/app/config.json
 ```
+
+Maak `config.json` vóór de eerste start aan met de URL van je panel (zie [Configuratie van het panel](#configuratie-van-het-panel)). Het `config.json` in het image bevat alleen placeholders; zonder eigen bestand werkt de login niet.
 
 Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-URL>`.
 
@@ -82,7 +85,7 @@ In `config.json` of via het panel onder **Configuratie**:
 
 `redirectUri` moet precies gelijk zijn aan de redirect in de Developer Portal, anders geeft Discord "Invalid redirect_uri".
 
-Let op: `config.json` zit in het image. Wijzigingen via het panel gaan verloren bij een nieuw image, tenzij je het bestand als volume mount (staat in de backlog).
+Mount het bestand als volume op `/app/config.json` (zie hierboven). Dan blijven wijzigingen via het panel bewaard bij een nieuw image. Zet je echte URL nooit in de repo: `config.json` in de repo bevat alleen placeholders.
 
 ### Back-up
 
@@ -247,7 +250,7 @@ Het panel controleert elke minuut opnieuw of je nog *Server beheren* hebt op de 
 
 ```bash
 npm ci
-cp .env.example .env        # zodra .env.example bestaat; anders zelf .env aanmaken
+cp .env.example .env        # en vul de waarden in
 
 cd admin
 npm ci
@@ -272,7 +275,8 @@ Door de CSRF-controle moet `frontendUrl` gelijk zijn aan het adres waarop je het
 GitHub Actions bouwt het image (`.github/workflows/docker.yml`):
 
 - **Bij elke push en pull request** controleert de job `check` of `VERSION` en `package.json` gelijk zijn, of alle JS-bestanden geldig zijn en of het panel bouwt.
-- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Daarna maakt hij onder *Releases* een GitHub Release `v<versie>`, met `updateplannen/v<versie>/00-overzicht.md` als tekst (of automatische notities als dat bestand ontbreekt). Staat de tag er al, dan wordt er niets gebouwd.
+- **Daarnaast draait `.github/workflows/ci.yml`** bij elke pull request en push naar `main`: een scan op gevoelige data (`scripts/check_sensitive.py`) en `npm ci` met een syntaxcontrole van de bot. Eigen zoektermen voor de scan staan in het repository-secret `SENSITIVE_TERMS` (één per regel), of lokaal in `.sensitive-terms` (niet in git).
+- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Daarna maakt hij onder *Releases* een GitHub Release `v<versie>`, met de sectie `## [<versie>]` uit `CHANGELOG.md` als tekst (of automatische notities als die sectie ontbreekt). Staat de tag er al, dan wordt er niets gebouwd.
 - **Opnieuw bouwen** van dezelfde versie: *Actions* → *Docker image* → *Run workflow* met `force` aan. Ontbreekt de release nog, dan wordt die daarbij alsnog aangemaakt.
 - De actions draaien op Node 24; de controle van de bot gebruikt Node 22, net als het image.
 
@@ -282,4 +286,4 @@ Voorwaarde: het package `wod` op GHCR geeft de repo schrijfrechten (*Package set
 
 ## Versiebeheer
 
-Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Een nieuwe `VERSION` op `main` start de build van het image. Commit message: `v<versie> — <korte omschrijving>`; tussenliggende fases heten `v<versie> (fase N/M) — <omschrijving>`. Zie `BACKLOG.md` voor wat er per versie is uitgebracht en wat nog open staat.
+Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Een nieuwe `VERSION` op `main` start de build van het image. Wat er per versie is veranderd, staat in `CHANGELOG.md`.

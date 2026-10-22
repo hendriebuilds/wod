@@ -1,0 +1,176 @@
+# CLAUDE.md — WoD Bot
+
+Discord-bot voor "Waarheid of Doen" op meerdere servers. Naast het spel zijn er "Nooit heb ik…", beurtrotatie, sessies, profielen met punten, levels en achievements, en de fun-tests liefdestaal, persoonlijkheid en relatietest. Beheer gaat via een React-panel met Discord-login, per server, en voor een deel via slash commands.
+
+## Waar staat wat
+- **Foutmeldingen:** `errorcodes/` (oorzaak en oplossing van eerder gevonden fouten)
+- **Versie:** `VERSION` (en `version` in `package.json`, altijd gelijk houden)
+- **Wijzigingen per versie:** `CHANGELOG.md` (Keep a Changelog; de sectie van een versie is ook de tekst van de GitHub Release)
+- **Omgevingsvariabelen:** `.env.example`
+- **Installatie en gebruik:** `README.md`
+
+## Stack
+Node.js 22 + discord.js v14 als ES modules (`"type": "module"`), Express voor API en panel op één poort, eigen Discord OAuth2-flow met `fetch` en `express-session`, SQLite via better-sqlite3, React 18 + Vite voor het panel, Docker (`node:22-alpine`, multi-stage).
+
+Productie draait op Unraid als Docker-container, met het panel achter een reverse proxy (HTTPS). De database staat in een volume op `DATA_DIR`.
+
+## Structuur
+- `index.js` — laadt eerst `dotenv/config` en `src/env.js`; client (intent `Guilds`, `allowedMentions: { parse: [] }`), globale fout-handlers, command loader (`src/commands/{game,fun,admin}`, opgeslagen als `{ mod, cat }`), globale registratie van slash commands bij `ready`, guild-events, `interactionCreate` (in `try/catch`, rechtencheck voor admin commands, dispatch naar commands en `handleButton`), start server en login
+- `src/env.js` — controle van verplichte omgevingsvariabelen bij het starten (stopt met exitcode 1)
+- `src/permissions.js` — `isGuildAdmin(interaction)` (*Server beheren*) en de melding `GEEN_RECHTEN`
+- `src/interactionError.js` — `replyError()`: fout loggen en de speler een ephemeral foutmelding geven
+- `src/config.js` — `config.json` laden/opslaan (`redirectUri`, `frontendUrl`), `SUPERADMIN_IDS`, `isSuperAdmin()`
+- `src/database.js` — tabellen en migraties, alle prepared statements in `stmts`, `dbGetInstellingen()`, standaard "Nooit"-stellingen, `syncGuildToDb()`, eenmalige migratie van `vragen.json`/`settings.json`
+- `src/game.js` — sessie-cache, beurtrotatie, `getVraag()`/`getVraagPool()` (met filter nooit een fallback), `CATEGORIEEN` + `categorieLabel()` (weergave), `STANDAARD_CATEGORIE`, `normaliseerCategorie()`, `isGeldigeCategorie()`, categoriefilter per kanaal, cooldown (per `guildId:userId`), data van de fun-tests, `LEVELS`, `voegPuntenToe()`, `checkAchievements()`
+- `src/embeds.js` — alle embeds en knoppenrijen (`build*Embed`, `build*Buttons`)
+- `src/ronde.js` — rondes: `stuurVraag()` (de enige plek die een waarheid/doen-embed met actieknoppen verstuurt, incl. DM-modus), `kiesVraag()`, `parseRondeKnop()`, `claimBericht()`/`geefBerichtVrij()` (één verwerking per bericht)
+- `src/buttons.js` — `handleButton()`: alle knoppen, punten, level-up en achievement-meldingen; rondeknoppen in `handleRondeKnop()` (alleen de speler uit de custom ID)
+- `src/server.js` — Express-app: CSRF-controle (`vereisZelfdeOrigin`), auth, alle `/api`-routes, statische bestanden van het panel
+- `src/sessionStore.js` — `SqliteStore`: sessies van het panel in de tabel `panel_sessies` (opruimen elke 15 min)
+- `src/commands/admin/` — `voeg-toe`, `verwijder`, `lijst`, `reload`, `reset`, `sessie`, `strafpunten`
+- `src/commands/game/` — `wod`, `waarheid`, `doen`, `beurt`, `nooit`, `statistieken`, `profiel`, `ranglijst`, `achievements`
+- `src/commands/fun/` — `liefdestaal`, `persoonlijkheid`, `relatietest`
+- `admin/src/` — `main.jsx`, `App.jsx`, `LanguageContext.jsx` (`t()`, taal in `localStorage`), `api.js` (alle API-aanroepen), `App.css`
+- `admin/src/components/Layout.jsx` — navigatie, serverkeuze, taalknop; pagina "Servers" alleen voor superadmins
+- `admin/src/pages/` — `Login`, `Vragen`, `Nooit`, `Sessies`, `Statistieken`, `Ranglijst`, `Instellingen`, `Configuratie`, `Servers`
+- `admin/src/i18n/` — `nl.js` en `en.js`, dezelfde sleutels
+- `Dockerfile`, `.dockerignore`, `build-and-push.sh` (noodoptie)
+- `config.json` — alleen placeholders; in productie gemount op `/app/config.json`
+- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met de sectie uit `CHANGELOG.md`); actions op Node 24, controle met Node 22
+- `.github/workflows/ci.yml` — bij elke PR en push naar `main`: `scan` (gevoelige data, eigen termen uit het secret `SENSITIVE_TERMS`) en `test` (`npm ci` en syntaxcontrole)
+- `scripts/check_sensitive.py` — scan op IP-adressen, interne hostnames, secrets en eigen termen (`.sensitive-terms`, niet in git); `scan:ignore` op een regel slaat die over
+- `package-lock.json`, `admin/package-lock.json` — lock files, altijd meecommitten
+
+Werk deze lijst bij zodra er bestanden bijkomen.
+
+### Database (`$DATA_DIR/bot.db`)
+Alles behalve `bot_servers`, `migraties` en `panel_sessies` heeft een `guild_id`.
+| tabel | inhoud |
+|---|---|
+| `vragen` | `type` (`waarheid`/`doen`), `tekst`, `categorie`, `dm_modus`. UNIQUE-index op `(guild_id, LOWER(tekst))` |
+| `instellingen` | één rij per server, zie hieronder |
+| `nooit_stellingen` | eigen "Nooit heb ik…"-stellingen; leeg = standaardlijst uit `database.js` |
+| `wod_sessies` | `channel_id`, `naam`, `status` (`actief`/`gepauzeerd`/`beeindigd`), gebruikte vragen (JSON), tellers, `reroll_teller` (JSON) |
+| `actieve_sessie` | welke sessie actief is per `(guild_id, channel_id)` |
+| `channel_categorie` | koppeling kanaal → vraagcategorie |
+| `user_levels` | `punten`, `level`, `reroll_teller`, `passen_teller`, `rondes_teller` per speler per server |
+| `user_achievements` | behaalde achievements met `behaald_op` |
+| `bot_servers` | servers waar de bot in zit (naam, icoon, leden, eigenaar), voor de Servers-pagina |
+| `migraties` | eenmalige datamigraties die al zijn uitgevoerd (`naam`, bijv. `achievements_v1_10`) |
+| `relatietest_punten` | `(guild_id, speler_a, speler_b, datum)`: paar (laagste ID eerst) kreeg op die dag (Europe/Amsterdam) al punten |
+| `strafpunten` | `user_id`, `door_id`, werkelijk afgetrokken `aantal`, `reden`, `op`; voor een later auditlog |
+| `panel_sessies` | sessies van het panel: `sid`, `sess` (JSON), `verloopt` (ms); geen `guild_id` |
+
+### Instellingen per server (tabel `instellingen`, panel → Instellingen)
+| kolom | beschrijving | standaard |
+|---|---|---|
+| `cooldown_ms` | wachttijd tussen knopklikken per gebruiker (0–10000) | `1500` |
+| `dm_modus` | alle vragen via DM | `0` |
+| `auto_categorie_mappen` | categoriemappen zijn aangemaakt/ingeschakeld | `0` |
+| `categorie_per_chat` | vragen filteren op de categorie van het kanaal | `0` |
+
+### Knoppen (custom IDs)
+Rondeknoppen dragen de speler van de ronde (`<id>` = Discord-ID, 17–20 cijfers). Alleen die speler kan klikken; anderen krijgen een ephemeral melding. Oude IDs zonder speler geven de melding dat de ronde verlopen is.
+- `kies_waarheid_<id|open>`, `kies_doen_<id|open>`, `kies_random_<id|open>` (`open`: de eerste die kiest, is aan de beurt)
+- `reroll_waarheid_<id>`, `reroll_doen_<id>`, `passen_waarheid_<id>`, `passen_doen_<id>`, `nieuwe_ronde_<id>`
+- `nooit_wel_<id>`, `nooit_nooit_<id>`, `nooit_sluit_<id>` (`<id>` = interaction-ID van `/nooit`)
+- `lt_A`, `lt_B` (liefdestaal), `pt_A`, `pt_B` (persoonlijkheid)
+- `rt_start_<id>`, `rt_A_<id>`, `rt_B_<id>` (relatietest)
+- `verwijder_ja_<vraagId>` (alleen *Server beheren*), `verwijder_nee`
+
+Nieuwe knoppen hier toevoegen.
+
+### Slash commands
+Globaal geregistreerd bij elke start (guild commands worden daarbij leeggemaakt).
+- **Admin** (`setDefaultMemberPermissions(ManageGuild)`): `/voeg-toe type tekst categorie`, `/verwijder type nummer`, `/lijst [type]`, `/reload`, `/reset`, `/sessie starten|lijst|wisselen|pauzeren|hervatten|stoppen|info`, `/strafpunten speler aantal reden`
+- **Spel:** `/wod [speler]`, `/waarheid [nummer]`, `/doen [nummer]`, `/beurt toevoegen|verwijder|lijst|reset|volgende` (`verwijder` en `reset` alleen met *Server beheren*), `/nooit [stelling]`, `/statistieken`, `/profiel [speler]`, `/ranglijst`, `/achievements`
+- **Fun:** `/liefdestaal`, `/persoonlijkheid`, `/relatietest speler`
+
+### Punten en levels
+| actie | punten |
+|---|---|
+| `/wod` | 0 |
+| Waarheid/Doen/Verrassing kiezen (alleen de speler) | +5 |
+| Nieuwe ronde (alleen de speler) | +5 |
+| Reroll (alleen de speler) | −5 |
+| Passen (alleen de speler) | −7 |
+| Stemmen bij `/nooit` | +3, één keer per stemming (`beloond` in de stemming) |
+| `/relatietest` voltooid | +15 (beide spelers), één keer per paar per dag (`relatietest_punten`) |
+| `/strafpunten` (admin) | −1 t/m −100 |
+
+Punten gaan nooit onder 0. Reroll en Passen kosten alleen punten als er een nieuwe vraag is. Levels in `LEVELS` (`src/game.js`): Lafaard 0 · Deelnemer 50 · Durfal 150 · Avonturier 350 · Onthulling 700 · Verleider 1200 · Kampioen 2000 · Legenda 3500. Achievements staan alleen in `ACHIEVEMENTS` (`src/game.js`), met `minLevel` (level uit de punten) of `check(row)`; `checkAchievements()`, `achievementEmoji()`, `buildAchievementsEmbed()` en `buttons.js` lezen daaruit. `voegPuntenToe()` controleert achievements alleen bij punten erbij en geeft `effectiefDelta` en `puntenNa` terug. Na een teller (`incrReroll/Passen/Rondes`) nog een keer `checkAchievements()`.
+
+Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `migraties` (bijv. `migreerAchievements()` in `src/game.js`, aangeroepen in `index.js`).
+
+### Toegangsregel
+- **Panel:** bij login krijgt de sessie de servers waar de bot in zit én de gebruiker *Server beheren* (`0x20`) heeft. Superadmins (`SUPERADMIN_IDS`) krijgen alle servers. De actieve server staat in `req.session.activeGuildId`.
+- **Routes:** `requireAuth` (ingelogd), `requireGuild` (server gekozen én rechten opnieuw gecontroleerd via `heeftToegang()`, cache 60 s; bij verlies 403 `geen_toegang_server` of 401), `requireSuperAdmin` (superadmin). `POST /api/guild` controleert ook via `heeftToegang()`. Een tijdelijke Discord-fout geeft 503 en logt niemand uit.
+- **Admin commands en -knoppen:** `setDefaultMemberPermissions(ManageGuild)` bepaalt wie ze ziet; `interactionCreate` (voor `src/commands/admin/*`), `verwijder_ja_<id>` en `/beurt verwijder|reset` controleren zelf met `isGuildAdmin()`.
+- **Login:** OAuth met `state`, nieuwe sessie-ID na inloggen, cookie `wod.sid` (`HttpOnly`, `SameSite=Lax`, `Secure` als `frontendUrl` https is), sessie in SQLite (`SqliteStore`, 24 uur). Fouten gaan naar `?error=geen_toegang|ongeldige_login|login_mislukt`.
+- **CSRF:** elk verzoek buiten `GET`/`HEAD`/`OPTIONS` naar `/api/*` en `POST /auth/logout` moet een `Origin` (of anders `Referer`) hebben die gelijk is aan `frontendUrl`, anders 403 `csrf`. Een body moet `application/json` zijn, anders 415 `content_type`. JSON-limiet 2 MB. Nieuwe schrijvende routes vallen hier automatisch onder; stuur vanuit het panel alleen JSON (via `req()` in `api.js`).
+
+### API-routes (`src/server.js`)
+- **Auth:** `GET /auth/login`, `GET /auth/callback`, `GET /auth/me`, `POST /auth/logout`
+- **Servers kiezen:** `GET /api/guilds`, `POST /api/guild`
+- **Vragen:** `GET/POST /api/vragen`, `PUT/DELETE /api/vragen/:id`, `GET /api/vragen/export`, `POST /api/vragen/import` (JSON `{ csv }`)
+- **Nooit:** `GET/POST /api/nooit`, `PUT/DELETE /api/nooit/:id`
+- **Sessies en statistieken:** `GET /api/sessies`, `DELETE /api/sessies/:id`, `GET /api/statistieken`, `POST /api/reset`, `POST /api/reload`, `GET /api/ranglijst`
+- **Instellingen:** `GET/PUT /api/instellingen`, `POST /api/reset-config`, `GET/POST /api/channel-categorie`, `DELETE /api/channel-categorie/:channelId`, `GET /api/kanalen`, `GET /api/categorieen`, `POST /api/categoriemappen/aanmaken`
+- **Configuratie:** `GET/PUT /api/config` (`requireSuperAdmin`; `PUT` valideert beide URL's)
+- **Superadmin:** `GET /api/servers`, `DELETE /api/servers/:guildId` (bot verlaat de server)
+- **Health:** `GET /health` (zonder login), `200 {"status":"ok"}` als de bot verbonden is, anders `503`. Staat vóór de sessie- en CSRF-middleware, geeft geen details (publiek bereikbaar) en logt niets. Gebruikt door de `HEALTHCHECK` in de `Dockerfile`.
+- Alles daarbuiten: `admin/dist` (React-app)
+- **Fouten:** helemaal onderaan `server.js` staat een JSON-error-handler (400 `ongeldige_json`, 413 `te_groot`, 500 `serverfout`). Nieuwe routes geven fouten zelf als JSON terug of via `next(err)`, nooit als HTML. Log daarbij geen headers, cookies of body.
+- **Afsluiten:** `index.js` vangt `SIGTERM`/`SIGINT` af (`sluitAf()`): sessies opslaan, server, Discord en database sluiten, noodstop na 8 s. Nieuwe intervals krijgen `unref()` en schrijven niet meer na `db.close()`.
+
+## Omgevingsvariabelen
+| Variabele | Beschrijving | Standaard |
+|---|---|---|
+| `DISCORD_TOKEN` | Bot token | vereist |
+| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist |
+| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist |
+| `SESSION_SECRET` | Express-sessie secret, minimaal 32 tekens | vereist |
+| `SUPERADMIN_IDS` | Discord user-ID's, kommagescheiden (oud: `SUPERADMIN_ID`) | leeg |
+| `ADMIN_PORT` | Poort van panel en API | `3001` |
+| `DATA_DIR` | Map voor `bot.db` | `./data` (in de container `/app/data`) |
+
+In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>/auth/callback`) en `frontendUrl` (`<PANEL-URL>`).
+
+## Harde regels
+1. **Nooit infrastructuurdetails in de repo, in Discord-berichten of op het panel.** Geen IP-adressen, hostnames, domeinen, servernamen of netwerkindelingen, ook niet in docs, plannen, seed-data, `config.json` of commentaar. Gebruik placeholders zoals `<UNRAID-HOST>`, `<PANEL-URL>` en `<OLLAMA-HOST>`.
+2. **Secrets alleen via omgevingsvariabelen.** Nooit in code, docs of logregels. `.env`, `data/` en `*.db` nooit committen.
+3. **Altijd JavaScript als ES modules.** Geen TypeScript, geen CommonJS, geen andere talen. In het panel alleen React + Vite met eigen CSS; geen UI-libraries of extra frameworks zonder toestemming.
+4. **Alles per server gescheiden.** Elke query op vragen, sessies, punten, instellingen en koppelingen filtert op `guild_id`. In de API komt de server altijd uit `req.session.activeGuildId`, nooit uit de body of URL (behalve `POST /api/guild`, dat controleert of je toegang hebt). Nieuwe in-memory state (zoals beurten) krijgt ook een sleutel per server, en waar nodig per kanaal.
+5. **Een nieuwe instelling komt op alle plekken tegelijk:** kolom met migratie in `src/database.js`, `dbGetInstellingen()`, `stmts.upsertInstellingen`, én elke aanroep daarvan (`PUT /api/instellingen`, `POST /api/reset-config`, `POST /api/categoriemappen/aanmaken`), `Instellingen.jsx`, `nl.js` + `en.js` en de tabel hierboven. `upsertInstellingen` gebruikt positionele parameters; een vergeten aanroep zet een instelling stil terug.
+6. **Databasewijzigingen:** nieuwe tabellen met `CREATE TABLE IF NOT EXISTS`. Nieuwe kolommen via een migratiestap **na** het aanmaken van de tabel, nooit alleen in de `CREATE TABLE`, anders mist een bestaande installatie de kolom (zie `errorcodes/user_levels.md`). Gebruik daarvoor `voegKolomToe(tabel, kolom, definitie)` in `src/database.js` (controleert met `PRAGMA table_info`), en zet de aanroep ná alle `CREATE TABLE`-blokken. Geen `ALTER TABLE` in een lege `catch`: mislukt een migratie, dan stopt de start met een duidelijke fout.
+   **Categorieën:** alleen waarden uit `CATEGORIEEN` (`src/game.js`), gecontroleerd met `isGeldigeCategorie()` na `normaliseerCategorie()`; standaard is `STANDAARD_CATEGORIE` (`algemeen`). Het schema van `vragen` heeft nog `DEFAULT '18+'`, maar die wordt nooit gebruikt: elke insert geeft de categorie zelf mee. De lijst `CATEGORIEEN` in `admin/src/pages/Vragen.jsx` gelijk houden.
+7. **Bestaande spelersdata blijft staan.** Wijzigingen in punten, levels of achievements resetten nooit bestaande punten. Pas liever drempels of tiers aan en beschrijf in `CHANGELOG.md` wat er met bestaande spelers gebeurt.
+8. **Rechten controleert de bot zelf.** `setDefaultMemberPermissions` bepaalt alleen wie een command ziet, en serverbeheerders kunnen dat aanpassen. Beheeracties (admin commands en knoppen als `verwijder_ja_<id>`) controleren daarom in de code op *Server beheren*. Nieuwe panel-routes altijd met `requireAuth` + `requireGuild`. Wat voor alle servers geldt (configuratie, servers) krijgt `requireSuperAdmin`.
+9. **Een fout laat de bot nooit crashen.** Node stopt het proces bij een onafgevangen promise-fout. Elke event-handler, interactie, route en fire-and-forget-aanroep krijgt dus een `try/catch` of `.catch()` met een logregel. Beantwoord interacties altijd, ook bij een cooldown; bij werk dat langer duurt eerst `deferReply`/`deferUpdate`.
+10. **Invoer van buiten is onbetrouwbaar.** Valideer slash-command-opties, panel-invoer en CSV-regels: verplichte velden, toegestane waarden (`type`, bekende categorieën), lengtes binnen de Discord-limieten (titel 256, beschrijving 4096, veldwaarde 1024, bericht 2000, inclusief de tekst eromheen) en Discord-ID's als 17–20 cijfers. Maximale invoerlengtes staan in `MAX_LENGTE` (`src/game.js`: vraag 500, stelling 300; ook als `setMaxLength`, in de API met 400 `te_lang`, en als `maxLength` in het panel). Bij het tonen gaat elke titel, beschrijving, footer en veldwaarde met tekst van buiten door `kapAf(tekst, LIMIET.…)`, en namenlijsten door `naamLijst()` (beide in `src/embeds.js`), want bestaande data kan langer zijn. Ephemeral altijd met `flags: MessageFlags.Ephemeral`, nooit `ephemeral: true`. Stuur berichten met invoer van spelers met beperkte `allowedMentions` (geen `@everyone`, `@here` of rollen).
+11. **Categorie-instellingen van een server gaan voor.** Zonder koppeling mogen alle categorieën overal verschijnen, 18+ inbegrepen; dat is gewenst gedrag. Is een kanaal aan een categorie gekoppeld, dan toont nieuwe code daar alleen vragen uit die categorie, ook niet via een fallback, een opgegeven nummer of DM.
+12. **Tweetalig panel.** Elke zichtbare tekst in het panel gaat via `t()` en staat in `nl.js` én `en.js` onder dezelfde sleutel. Geen hardcoded tekst in JSX. De berichten in Discord zijn nu Nederlands; zodra de bot tweetalig is, geldt dezelfde regel voor de bot.
+13. **Punten en passief spel.** Het puntensysteem ontmoedigt rerollen en passen. Nieuwe acties die punten opleveren mogen niet te farmen zijn: geen punten voor herhaald klikken, aan/uit zetten of acties zonder echte deelname.
+14. **Eerst wat Node 22 zelf biedt** *(voorstel)*. Geen nieuw package als Node het al kan (`node:test`, `node --env-file`, `crypto`, `fetch`). Tests komen met `node:test`, zonder extra testframework.
+15. **`config.json` in de repo bevat alleen placeholders** *(voorstel)*. De echte URL's staan in het gemounte bestand in productie of in je lokale kopie; commit die nooit.
+
+## Commando's
+Vul deze aan zodra er nieuwe bijkomen.
+```bash
+npm ci                          # dependencies bot (volgens package-lock.json)
+npm --prefix admin ci           # dependencies panel (volgens admin/package-lock.json)
+npm install <package>           # alleen bij toevoegen/bijwerken van een package; lock file meecommitten
+npm --prefix admin run build    # panel bouwen naar admin/dist (niet in git; nodig vóór node index.js)
+node index.js                   # lokaal starten (leest .env via dotenv; database in ./data; vereist gebouwd panel)
+npm --prefix admin run dev      # panel lokaal op de Vite-devserver, /api en /auth gaan naar poort 3001
+
+# Controles (zelfde als CI; er zijn nog geen tests)
+node --check index.js && find src -name '*.js' -print0 | xargs -0 -n1 node --check   # syntaxcontrole
+python scripts/check_sensitive.py --all      # scan op gevoelige data, hele repo
+python scripts/check_sensitive.py --staged   # alleen de staged wijzigingen, vóór een commit
+npm audit --omit=dev            # bekende kwetsbaarheden in de dependencies van de bot
+npm --prefix admin audit        # idem voor het panel
+
+gh run list --workflow docker.yml   # status van de image-builds (als gh beschikbaar is)
+./build-and-push.sh             # noodoptie: image bouwen en pushen naar GHCR (tag uit VERSION + latest)
+```

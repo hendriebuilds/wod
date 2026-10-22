@@ -131,10 +131,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           V: ${{ needs.check.outputs.version }}
         run: |
+          # Sectie "## [<versie>]" uit CHANGELOG.md, tot de volgende "## ["
+          awk -v kop="## [$V]" 'index($0, kop) == 1 {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > release-notes.md 2>/dev/null || true
           if gh release view "v$V" > /dev/null 2>&1; then
             echo "Release v$V bestaat al."
-          elif [ -f "updateplannen/v$V/00-overzicht.md" ]; then
-            gh release create "v$V" --title "v$V" --notes-file "updateplannen/v$V/00-overzicht.md" --verify-tag
+          elif grep -q '[^[:space:]]' release-notes.md; then
+            gh release create "v$V" --title "v$V" --notes-file release-notes.md --verify-tag
           else
             gh release create "v$V" --title "v$V" --generate-notes --verify-tag
           fi
