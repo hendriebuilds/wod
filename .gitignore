@@ -10,6 +10,10 @@ admin/dist/
 .env.*
 !.env.example
 
+# Data and configuration
+/data/
+/config.json
+
 # Database
 *.db
 *.db-shm
@@ -26,3 +30,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Lokale notities
+/errorcodes/

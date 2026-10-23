@@ -560,7 +560,7 @@ app.post('/api/categoriemappen/aanmaken', requireAuth, requireGuild, async (req,
   if (!guild) return res.status(404).json({ error: 'Server niet gevonden.' });
   try {
     const categories = stmts.getDistinctCats.all(guildId).map(r => r.categorie).filter(isGeldigeCategorie);
-    if (categories.length === 0) return res.status(400).json({ error: 'Geen vraagcategorieën gevonden. Voeg eerst vragen toe.' });
+    if (categories.length === 0) return res.status(400).json({ error: 'Geen vraagcategorieën gevonden. Voeg eerst vragen toe.', code: 'geen_categorieen' });
 
     const catChannel = await guild.channels.create({
       name: '🎮 Waarheid of Doen',
@@ -585,7 +585,7 @@ app.post('/api/categoriemappen/aanmaken', requireAuth, requireGuild, async (req,
     res.json({ ok: true, aangemaakt: created });
   } catch (err) {
     console.error('Fout bij aanmaken categoriemappen:', err.message);
-    res.status(500).json({ error: 'Fout bij aanmaken kanalen: ' + err.message });
+    res.status(500).json({ error: 'Kanalen aanmaken mislukt.', code: 'categoriemappen_mislukt' });
   }
 });
 
@@ -624,12 +624,13 @@ app.get('/api/servers', requireAuth, requireSuperAdmin, (req, res) => {
 app.delete('/api/servers/:guildId', requireAuth, requireSuperAdmin, async (req, res) => {
   const { guildId } = req.params;
   const guild = _client.guilds.cache.get(guildId);
-  if (!guild) return res.status(404).json({ error: 'Server niet gevonden of bot is er al weg.' });
+  if (!guild) return res.status(404).json({ error: 'Server niet gevonden of bot is er al weg.', code: 'server_weg' });
   try {
     await guild.leave();
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: 'Verlaten mislukt: ' + err.message });
+    console.error('❌ Server verlaten mislukt:', err.message);
+    res.status(500).json({ error: 'Verlaten mislukt.', code: 'verlaten_mislukt' });
   }
 });
 
@@ -679,9 +680,14 @@ app.put('/api/config', requireSuperAdmin, (req, res) => {
   if (!isGeldigeUrl(nieuweRedirect) || !new URL(nieuweRedirect).pathname.endsWith('/auth/callback') || !isGeldigeUrl(nieuweFrontend)) {
     return res.status(400).json({ error: 'Ongeldige URL.' });
   }
+  const vorige = { redirectUri: config.redirectUri, frontendUrl: config.frontendUrl };
   config.redirectUri = nieuweRedirect;
   config.frontendUrl = nieuweFrontend;
-  slaConfigOp();
+  if (!slaConfigOp()) {
+    // Niet opgeslagen: de oude waarden blijven gelden, anders blokkeert de CSRF-controle het panel
+    Object.assign(config, vorige);
+    return res.status(500).json({ error: 'Opslaan mislukt.', code: 'opslaan_mislukt' });
+  }
   res.json(config);
 });
 

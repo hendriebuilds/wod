@@ -5,7 +5,10 @@ async function handleFout(res, path) {
   try { data = JSON.parse(tekst); } catch { /* geen JSON */ }
   if (res.status === 401 && path !== '/auth/me') window.location.reload();
   if (res.status === 403 && data?.code === 'geen_toegang_server') window.location.reload();
-  throw new Error(tekst);
+  const fout = new Error(tekst);
+  fout.status = res.status;
+  fout.code = data?.code;
+  throw fout;
 }
 
 async function req(method, path, body) {

@@ -2,7 +2,6 @@ export default {
   locale: 'en-GB',
 
   laden: 'Loading...',
-  onbekendeFout: 'unknown error',
 
   'nav.vragen': '📝 Questions',
   'nav.nooit': '🍺 Never',
@@ -140,7 +139,9 @@ export default {
   'instellingen.bezig': '⏳ Busy...',
   'instellingen.maakMappen': '🗂️ Create category folders',
   'instellingen.aanmaakSuccess': '✅ {count} channel(s) created!',
-  'instellingen.aanmaakMislukt': 'Creation failed: {error}',
+  'instellingen.aanmaakMislukt': 'Creating channels failed. Does the bot have the Manage Channels permission?',
+  'instellingen.geenCategorieen': 'There are no questions with a category yet. Add questions first.',
+  'instellingen.aanmaakFout': 'Creating category folders failed. Please try again later.',
   'instellingen.koppelTitle': '🔗 Channel-category mapping',
   'instellingen.koppelHint': 'Link Discord channels to question categories. In a linked channel, only questions from that category are shown.',
   'instellingen.colKanaal': 'Channel',
@@ -161,7 +162,7 @@ export default {
   'instellingen.resetMislukt': 'Reset failed.',
 
   'configuratie.title': '🔧 Configuration',
-  'configuratie.subtitle': 'Settings for the admin panel. Bot token and client credentials remain in `.env`.',
+  'configuratie.subtitle': 'Settings for the admin panel, stored in config.json in the data folder. The bot token and client credentials stay in the environment variables.',
   'configuratie.redirectUri': 'OAuth Redirect URI',
   'configuratie.redirectHint': 'Must match exactly what you set in the Discord Developer Portal.',
   'configuratie.frontendUrl': 'Frontend URL',
@@ -197,7 +198,8 @@ export default {
   'servers.annuleer': 'Cancel',
   'servers.wisselnMislukt': 'Failed to switch.',
   'servers.verlatenSuccess': 'Bot has left the server.',
-  'servers.verlatenMislukt': 'Failed to leave: {error}',
+  'servers.verlatenMislukt': 'The bot could not leave the server. Please try again later.',
+  'servers.alWeg': 'The bot is no longer in this server.',
   'servers.actief': 'active',
   'servers.superadminHint': 'Configure `SUPERADMIN_IDS` in the environment to grant superadmin access. Servers are automatically tracked via Discord events.',
 };

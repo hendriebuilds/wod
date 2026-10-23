@@ -1,12 +1,10 @@
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import Database from 'better-sqlite3';
+import { DATA_DIR } from './paden.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', 'data');
-mkdirSync(DATA_DIR, { recursive: true });
 
 export const db = new Database(join(DATA_DIR, 'bot.db'));
 db.pragma('journal_mode = WAL');
