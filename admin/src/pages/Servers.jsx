@@ -45,7 +45,13 @@ export default function Servers() {
       setVerlatenId(null);
       await laad();
     } catch (err) {
-      toon(t('servers.verlatenMislukt', { error: err.message || t('onbekendeFout') }), 'error');
+      if (err.code === 'server_weg') {
+        toon(t('servers.alWeg'), 'error');
+        setVerlatenId(null);
+        await laad();
+      } else {
+        toon(t('servers.verlatenMislukt'), 'error');
+      }
     } finally {
       setBezig(null);
     }

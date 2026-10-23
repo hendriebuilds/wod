@@ -1,0 +1,4 @@
+{
+  "redirectUri": "https://panel.example.com/auth/callback",
+  "frontendUrl": "https://panel.example.com"
+}

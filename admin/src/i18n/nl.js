@@ -2,7 +2,6 @@ export default {
   locale: 'nl-NL',
 
   laden: 'Laden...',
-  onbekendeFout: 'onbekende fout',
 
   'nav.vragen': '📝 Vragen',
   'nav.nooit': '🍺 Nooit',
@@ -140,7 +139,9 @@ export default {
   'instellingen.bezig': '⏳ Bezig...',
   'instellingen.maakMappen': '🗂️ Maak categoriemappen aan',
   'instellingen.aanmaakSuccess': '✅ {count} kanaal/kanalen aangemaakt!',
-  'instellingen.aanmaakMislukt': 'Aanmaken mislukt: {error}',
+  'instellingen.aanmaakMislukt': 'Kanalen aanmaken mislukt. Heeft de bot het recht Kanalen beheren?',
+  'instellingen.geenCategorieen': 'Er zijn nog geen vragen met een categorie. Voeg eerst vragen toe.',
+  'instellingen.aanmaakFout': 'Categoriemappen aanmaken mislukt. Probeer het later opnieuw.',
   'instellingen.koppelTitle': '🔗 Kanaal-categorie koppeling',
   'instellingen.koppelHint': 'Koppel Discord-kanalen aan vraagcategorieën. In een gekoppeld kanaal worden alleen vragen uit die categorie getoond.',
   'instellingen.colKanaal': 'Kanaal',
@@ -161,7 +162,7 @@ export default {
   'instellingen.resetMislukt': 'Reset mislukt.',
 
   'configuratie.title': '🔧 Configuratie',
-  'configuratie.subtitle': 'Instellingen voor het admin panel. De bot token en client credentials blijven in `.env`.',
+  'configuratie.subtitle': 'Instellingen voor het admin panel, opgeslagen in config.json in de datamap. De bot token en client credentials blijven in de omgevingsvariabelen.',
   'configuratie.redirectUri': 'OAuth Redirect URI',
   'configuratie.redirectHint': 'Moet exact overeenkomen met wat je in de Discord Developer Portal hebt ingesteld.',
   'configuratie.frontendUrl': 'Frontend URL',
@@ -197,7 +198,8 @@ export default {
   'servers.annuleer': 'Annuleer',
   'servers.wisselnMislukt': 'Wisselen mislukt.',
   'servers.verlatenSuccess': 'Bot heeft de server verlaten.',
-  'servers.verlatenMislukt': 'Verlaten mislukt: {error}',
+  'servers.verlatenMislukt': 'De bot kon de server niet verlaten. Probeer het later opnieuw.',
+  'servers.alWeg': 'De bot zit niet meer in deze server.',
   'servers.actief': 'actief',
   'servers.superadminHint': 'Configureer `SUPERADMIN_IDS` in de environment om superadmin-toegang te verlenen. Servers worden automatisch bijgehouden via Discord-events.',
 };

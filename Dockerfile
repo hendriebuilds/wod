@@ -9,13 +9,16 @@ RUN npm run build
 # Stage 2: Bot + API server
 FROM node:22-alpine
 ENV NODE_ENV=production
+ENV DATA_DIR=/app/data
+VOLUME /app/data
+LABEL org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.description="Discord bot for Truth or Dare (Waarheid of Doen) with an admin panel"
 LABEL org.opencontainers.image.source="https://github.com/hendriebuilds/wod"
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY index.js .
-COPY config.json .
 COPY src/ ./src/
 COPY --from=admin-builder /admin/dist ./admin/dist
 EXPOSE 3001

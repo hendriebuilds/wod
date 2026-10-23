@@ -1,134 +1,146 @@
-# WoD Bot — Waarheid of Doen
+**English** · [Nederlands](README.nl.md)
 
-Discord-bot voor Waarheid of Doen, met profielen, levels en achievements, en een admin panel om alles per server te beheren.
+# WoD Bot — Truth or Dare
 
-- **Spel:** `/wod` met knoppen Waarheid, Doen en Verrassing, plus Reroll, Passen (strafvraag) en Nieuwe ronde. Alleen de speler die aan de beurt is, kan de knoppen van zijn ronde gebruiken. Of direct een vraag met `/waarheid` en `/doen`
-- **Beurtrotatie:** spelers toevoegen en de beurt laten doorschuiven met `/beurt`
-- **Sessies:** meerdere sessies per server, per kanaal. Vragen komen per sessie niet dubbel voorbij; pauzeren, hervatten en wisselen met `/sessie`
-- **Nooit heb ik…:** stemmen met knoppen, met eigen stellingen per server
-- **Profielen:** punten, 8 levels, achievements en een ranglijst per server
-- **Fun:** liefdestaaltest, persoonlijkheidstest en relatietest met een andere speler
-- **Vragen:** categorieën (algemeen, vrienden, koppels, feest, 18+), categorie per kanaal, DM-modus, duplicaatcontrole, CSV-import en -export
-- **Admin panel:** Discord-login, beheer per server, Nederlands en Engels
+A Discord bot for Truth or Dare (*Waarheid of Doen*), with profiles, levels and achievements, and an admin panel to manage everything per server.
+
+- **Game:** `/wod` with Truth, Dare and Random buttons, plus Reroll, Pass (penalty question) and New round. Only the player whose turn it is can use the buttons of their round. Or ask a question directly with `/waarheid` and `/doen`
+- **Turn rotation:** add players and pass the turn along with `/beurt`
+- **Sessions:** several sessions per server, per channel. Questions don't repeat within a session; pause, resume and switch with `/sessie`
+- **Never have I ever…:** vote with buttons, with custom statements per server
+- **Profiles:** points, 8 levels, achievements and a leaderboard per server
+- **Fun:** love language test, personality test and a relationship test with another player
+- **Questions:** categories (algemeen, vrienden, koppels, feest, 18+), category per channel, DM mode, duplicate check, CSV import and export
+- **Admin panel:** Discord login, management per server, Dutch and English
+
+> **Language:** the messages in Discord are currently **Dutch only**. The admin panel is available in Dutch and English. English Discord messages are planned.
 
 Stack: Node.js 22, discord.js v14, Express, SQLite (better-sqlite3), React + Vite.
 
 ---
 
-## Discord-applicatie instellen
+## Content and 18+
 
-In de [Discord Developer Portal](https://discord.com/developers/applications):
+The bot comes without built-in questions. Every server adds its own questions and dares, including 18+ content if it wants to. The administrators of a server are responsible for its content and for who plays along.
 
-1. **Bot:** maak een bot aan en kopieer het token (`DISCORD_TOKEN`). Privileged intents zijn niet nodig.
-2. **OAuth2:** kopieer de Client ID en Client Secret (`DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`) en voeg deze redirect toe: `<PANEL-URL>/auth/callback`.
-3. **Uitnodigen:** voeg de bot toe met de scopes `bot` en `applications.commands` en minimaal deze rechten:
-   View Channels, Send Messages, Embed Links, Read Message History.
-   Wil je de knop "Categoriemappen aanmaken" in het panel gebruiken, geef dan ook Manage Channels.
+Every question has a category: `algemeen` (general), `vrienden` (friends), `koppels` (couples), `feest` (party) or `18+`. With **Categories per chat** (Settings) you link a channel to a single category. That channel then only shows questions from that category, without exceptions:
 
-De slash commands worden bij elke start globaal geregistreerd. Na een eerste installatie kan het even duren voordat ze overal zichtbaar zijn.
+- If the category has no questions of the chosen type, you get a message instead of a question from another category.
+- Once every question in the category has been used, the category starts over.
+- `/waarheid nummer:` and `/doen nummer:` use the numbers from `/lijst`, but refuse a question from another category in a linked channel.
+- This also applies in DM mode.
+
+Every question shows its category in the footer, e.g. `🔞 18+ • 3/40 vragen gehad`. For 18+ the title shows 🔞 as well. In a linked channel the counter only counts questions from that category.
+
+Without links, all categories are mixed in every channel, 18+ included. To keep 18+ separate, link a dedicated channel to `18+` and the other channels to the other categories.
 
 ---
 
-## Installatie (Docker)
+## Setting up the Discord application
 
-Het image staat op `ghcr.io/hendriebuilds/wod`.
+In the [Discord Developer Portal](https://discord.com/developers/applications):
+
+1. **Bot:** create a bot and copy its token (`DISCORD_TOKEN`). No privileged intents are needed.
+2. **OAuth2:** copy the Client ID and Client Secret (`DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`) and add this redirect: `<PANEL-URL>/auth/callback`.
+3. **Invite:** add the bot with the scopes `bot` and `applications.commands` and at least these permissions:
+   View Channels, Send Messages, Embed Links, Read Message History.
+   To use the "Create category folders" button in the panel, also grant Manage Channels.
+
+Slash commands are registered globally on every start. After a first installation it can take a while before they show up everywhere.
+
+---
+
+## Quick start (Docker Compose)
+
+The image is published as `ghcr.io/hendriebuilds/wod`.
+
+1. Create a `.env` file from [`.env.example`](.env.example) and fill in the values. Generate `SESSION_SECRET` with `openssl rand -hex 32`.
+2. Set `PANEL_URL` to the public HTTPS address of your panel, e.g. `https://panel.example.com`.
+3. Create a `docker-compose.yml`:
 
 ```yaml
-wod:
-  image: ghcr.io/hendriebuilds/wod:latest
-  restart: unless-stopped
-  env_file: .env
-  ports:
-    - "3001:3001"
-  volumes:
-    - wod_data:/app/data
-    - ./config.json:/app/config.json
+services:
+  wod:
+    image: ghcr.io/hendriebuilds/wod:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3001:3001"
+    volumes:
+      - wod_data:/app/data
+
+volumes:
+  wod_data:
 ```
 
-Maak `config.json` vóór de eerste start aan met de URL van je panel (zie [Configuratie van het panel](#configuratie-van-het-panel)). Het `config.json` in het image bevat alleen placeholders; zonder eigen bestand werkt de login niet.
+4. Start it with `docker compose up -d`.
 
-Zet het panel achter een reverse proxy met HTTPS en vul die URL in als `<PANEL-URL>`.
+Any Docker host works. On Unraid, for example, you add the same image, variables and a path for `/app/data` in the Docker tab.
 
-- **HTTPS en `X-Forwarded-Proto`:** begint `frontendUrl` met `https://`, dan is de sessie-cookie `Secure`. De reverse proxy moet dan de header `X-Forwarded-Proto` meesturen; zonder die header lukt het inloggen niet (je belandt steeds weer op het loginscherm). Of de cookie `Secure` is, wordt bij het starten bepaald: na het wijzigen van `frontendUrl` de container herstarten.
-- **Restart policy:** gebruik `unless-stopped` of `always`. Bij een onverwachte fout (`uncaughtException`) stopt de bot bewust, zodat Docker hem schoon herstart.
-- **Altijd via `<PANEL-URL>`:** opslaan, verwijderen en uitloggen werken alleen als het panel wordt geopend op het adres uit `frontendUrl` (CSRF-bescherming: de API controleert de `Origin`). Via een ander adres (bijv. rechtstreeks op de poort) kun je wel kijken, maar niets wijzigen; je krijgt dan een 403.
-- **Ingelogd blijven:** panelsessies staan in `bot.db` (tabel `panel_sessies`), dus een herstart of update van de container logt je niet uit. Een sessie verloopt na 24 uur.
-- **Productiemodus:** het image zet `NODE_ENV=production`. Fouten in de API komen altijd als JSON terug (bijv. 400 `ongeldige_json`, 413 `te_groot`, 500 `serverfout`), nooit als HTML-pagina met stacktrace.
-- **Healthcheck:** het image controleert elke 30 seconden `GET /health` op `ADMIN_PORT` (binnen de container). Die route geeft `200 {"status":"ok"}` zodra de bot met Discord verbonden is, en daarvoor `503`. Unraid en `docker ps` tonen de container dan als **healthy**. De route geeft geen verdere details en maakt geen sessie aan.
-- **Nette afsluiting:** bij `docker stop` (SIGTERM) slaat de bot de sessies op, sluit hij de webserver, de Discord-verbinding en de database, en stopt hij binnen 8 seconden (Docker wacht standaard 10). In de log staan `🛑 SIGTERM ontvangen…` en `👋 Afgesloten.`
-- **Startcontrole:** de bot start niet als een verplichte variabele ontbreekt of `SESSION_SECRET` korter is dan 32 tekens. De log noemt welke variabele het is.
+---
 
-### Omgevingsvariabelen
+## Reverse proxy and HTTPS
 
-| Variabele | Beschrijving | Standaard |
+Put the panel behind a reverse proxy with HTTPS and use that address as `<PANEL-URL>`.
+
+- **HTTPS and `X-Forwarded-Proto`:** if `frontendUrl` starts with `https://`, the session cookie is `Secure`. The reverse proxy must then send the `X-Forwarded-Proto` header; without it logging in fails (you keep landing on the login screen). Whether the cookie is `Secure` is decided at startup: restart the container after changing `frontendUrl`.
+- **Always through `<PANEL-URL>`:** saving, deleting and logging out only work when the panel is opened at the address in `frontendUrl` (CSRF protection: the API checks the `Origin`). Through another address (e.g. directly on the port) you can look around, but not change anything; you get a 403.
+- **Restart policy:** use `unless-stopped` or `always`. On an unexpected error (`uncaughtException`) the bot stops on purpose, so Docker restarts it cleanly.
+- **Staying logged in:** panel sessions are stored in `bot.db`, so restarting or updating the container doesn't log you out. A session expires after 24 hours.
+- **Production mode:** the image sets `NODE_ENV=production`. API errors are always returned as JSON, never as an HTML page with a stack trace.
+- **Healthcheck:** every 30 seconds the image checks `GET /health` on `ADMIN_PORT` inside the container. It returns `200 {"status":"ok"}` once the bot is connected to Discord, `503` before that. The route gives no further details.
+- **Graceful shutdown:** on `docker stop` (SIGTERM) the bot saves the sessions, closes the web server, the Discord connection and the database, and stops within 8 seconds.
+- **Startup check:** the bot doesn't start when a required variable is missing or `SESSION_SECRET` is shorter than 32 characters. The log names the variable.
+
+---
+
+## Configuration
+
+### Environment variables
+
+| Variable | Description | Default |
 |---|---|---|
-| `DISCORD_TOKEN` | Bot token | vereist |
-| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | vereist |
-| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | vereist |
-| `SESSION_SECRET` | Willekeurige string voor sessies, **minimaal 32 tekens** | vereist |
-| `SUPERADMIN_IDS` | Discord user-ID's met toegang tot alle servers, kommagescheiden | leeg |
-| `ADMIN_PORT` | Poort van panel en API | `3001` |
-| `DATA_DIR` | Map voor de database `bot.db` | `/app/data` in de container |
+| `DISCORD_TOKEN` | Bot token | required |
+| `DISCORD_CLIENT_ID` | OAuth2 client ID (Application ID) | required |
+| `DISCORD_CLIENT_SECRET` | OAuth2 client secret | required |
+| `SESSION_SECRET` | Random string for sessions, **at least 32 characters** | required |
+| `PANEL_URL` | Public URL of the panel, e.g. `https://panel.example.com`. Only used when the data folder has no `config.json` yet | empty |
+| `SUPERADMIN_IDS` | Discord user IDs with access to every server, comma-separated | empty |
+| `ADMIN_PORT` | Port of the panel and API | `3001` |
+| `DATA_DIR` | Folder for `bot.db` and `config.json` | `./data`, `/app/data` in the container |
 
-Een willekeurig secret maken: `openssl rand -hex 32`
+### `config.json` in the data folder
 
-### Configuratie van het panel
-
-In `config.json` of via het panel onder **Configuratie**:
+The panel's login settings are stored in `config.json` in the data folder (`/app/data/config.json` in the container):
 
 ```json
 {
-  "redirectUri": "<PANEL-URL>/auth/callback",
-  "frontendUrl": "<PANEL-URL>"
+  "redirectUri": "https://panel.example.com/auth/callback",
+  "frontendUrl": "https://panel.example.com"
 }
 ```
 
-`redirectUri` moet precies gelijk zijn aan de redirect in de Developer Portal, anders geeft Discord "Invalid redirect_uri".
+On startup the bot works like this:
 
-Mount het bestand als volume op `/app/config.json` (zie hierboven). Dan blijven wijzigingen via het panel bewaard bij een nieuw image. Zet je echte URL nooit in de repo: `config.json` in de repo bevat alleen placeholders.
+1. **`config.json` exists in the data folder:** the bot uses it. If `PANEL_URL` is also set and differs, the log says `PANEL_URL` is ignored.
+2. **No `config.json`, but `PANEL_URL` is set:** the bot creates `config.json` with `frontendUrl = PANEL_URL` and `redirectUri = PANEL_URL/auth/callback`. An invalid `PANEL_URL` stops the bot with a clear message.
+3. **Neither:** the panel uses `http://localhost:3001` and the log shows a warning. Logging in through any other address won't work.
 
-### Back-up
-
-Alle vragen, sessies, punten en instellingen staan in `bot.db` in het volume:
-
-```bash
-docker stop wod
-docker cp wod:/app/data/bot.db ./wod-$(date +%F).db
-docker start wod
-```
+Superadmins can change both URLs in the panel under **Configuration**; that writes to the same file. `redirectUri` must match the redirect in the Developer Portal exactly, otherwise Discord answers "Invalid redirect_uri". See [`config.example.json`](config.example.json) for an example.
 
 ---
 
-## Eerste keer instellen
+## First-time setup
 
-1. Start de container en nodig de bot uit op je server.
-2. Log in op het panel via `<PANEL-URL>`. Je ziet de servers waar de bot in zit en waar jij **Server beheren** hebt. Superadmins zien alle servers.
-3. Voeg vragen toe onder **Vragen** (los of via CSV-import) en eventueel eigen stellingen onder **Nooit**.
-4. Kies onder **Instellingen** de cooldown en de DM-modus. Wil je categorieën per kanaal, dan kun je kanalen koppelen of automatisch categoriemappen laten aanmaken.
-5. Start een spel in Discord met `/wod`.
+1. Start the container and invite the bot to your server.
+2. Log in to the panel at `<PANEL-URL>`. You see the servers the bot is in and where you have **Manage Server**. Superadmins see every server.
+3. Add questions under **Vragen** (one by one or with a CSV import), and optionally your own statements under **Nooit**.
+4. Under **Settings**, choose the cooldown and DM mode. For categories per channel, link channels or let the panel create category folders.
+5. Start a game in Discord with `/wod`.
 
-### Categorieën en 18+
+### CSV import
 
-Elke vraag heeft een categorie: `algemeen`, `vrienden`, `koppels`, `feest` of `18+`. Met **Categorieën per chat** (Instellingen) koppel je een kanaal aan één categorie. In dat kanaal verschijnen dan alleen vragen uit die categorie, zonder uitzonderingen:
-
-- Zijn er in die categorie geen vragen van het gekozen type, dan krijg je een melding (bijv. "Geen doe-opdrachten in de categorie 👫 Vrienden van dit kanaal") in plaats van een vraag uit een andere categorie.
-- Zijn alle vragen uit de categorie gehad, dan begint de categorie opnieuw.
-- `/waarheid nummer:` en `/doen nummer:` gebruiken de nummers uit `/lijst`, maar weigeren in een gekoppeld kanaal een vraag uit een andere categorie.
-- Dit geldt ook in DM-modus.
-
-Elke vraag toont zijn categorie in de footer, bijv. `🔞 18+ • 3/40 vragen gehad`. Bij 18+ staat 🔞 ook in de titel. In een gekoppeld kanaal telt de teller alleen de vragen uit die categorie.
-
-Zonder koppeling komen alle categorieën door elkaar in elk kanaal, 18+ inbegrepen. Wil je 18+ apart houden, koppel dan een eigen kanaal aan `18+` en de andere kanalen aan de overige categorieën.
-
-### CSV-import
-
-Een importbestand mag maximaal ongeveer 2 MB zijn. Kolommen `type` (`waarheid` of `doen`) en `tekst` zijn verplicht, `categorie` is optioneel (standaard `algemeen`) en moet `algemeen`, `vrienden`, `koppels`, `feest` of `18+` zijn (hoofdletters maken niet uit). Regels met een onbekend type, een lege tekst, een tekst van meer dan 500 tekens of een onbekende categorie (bijv. een eigen categorie als `spicy`) tellen als ongeldig en worden niet geïmporteerd. Dubbele vragen (hoofdletters maken niet uit) worden overgeslagen. Na de import zie je hoeveel vragen er zijn toegevoegd, overgeslagen en ongeldig.
-
-Bestaande vragen met een categorie buiten deze lijst blijven werken. Het panel markeert ze met ⚠️; kies bij het bewerken een geldige categorie.
-
-### Maximale lengte
-
-Een vraag of doe-opdracht mag maximaal 500 tekens zijn, een "Nooit heb ik…"-stelling maximaal 300. Dat geldt in het panel, bij de CSV-import, bij `/voeg-toe` en bij `/nooit stelling:`. Bestaande teksten die langer zijn blijven staan en worden in Discord afgekapt getoond (eindigend op `…`). In het panel kun je ze alleen opslaan als je ze inkort.
+An import file can be up to about 2 MB. The columns `type` (`waarheid` or `doen`) and `tekst` are required. `categorie` is optional (default `algemeen`) and must be `algemeen`, `vrienden`, `koppels`, `feest` or `18+` (case-insensitive). Rows with an unknown type, empty text, text over 500 characters or an unknown category count as invalid and are skipped. Duplicate questions (case-insensitive) are skipped. After the import you see how many questions were added, skipped and invalid.
 
 ```csv
 type,tekst,categorie
@@ -136,69 +148,75 @@ waarheid,"Wat is je grootste guilty pleasure?",vrienden
 doen,"Doe je beste imitatie van iemand in dit kanaal",feest
 ```
 
+Existing questions with a category outside this list keep working. The panel marks them with ⚠️; choose a valid category when you edit them.
+
+### Maximum length
+
+A question or dare can be at most 500 characters, a "Never have I ever…" statement at most 300. This applies in the panel, the CSV import, `/voeg-toe` and `/nooit stelling:`. Longer existing texts stay and are shown shortened in Discord (ending in `…`). In the panel you can only save them after shortening them.
+
 ---
 
 ## Slash commands
 
-### Spel
-| Command | Beschrijving |
+### Game
+| Command | Description |
 |---|---|
-| `/wod [speler]` | Start een ronde voor een speler: de opgegeven speler, anders wie in `/beurt` aan de beurt is, anders jijzelf |
-| `/waarheid [nummer]` | Direct een waarheidsvraag, of een specifieke via het nummer uit `/lijst` |
-| `/doen [nummer]` | Direct een doe-opdracht, of een specifieke via het nummer |
-| `/beurt toevoegen\|lijst\|volgende` | Beurtrotatie: speler toevoegen, lijst bekijken, naar de volgende speler |
-| `/beurt verwijder\|reset` | Speler uit de rotatie halen of de rotatie wissen (alleen met Server beheren) |
-| `/nooit [stelling]` | Ronde "Nooit heb ik…"; zonder stelling kiest de bot er een |
-| `/statistieken` | Statistieken van de sessie in dit kanaal |
+| `/wod [speler]` | Start a round for a player: the given player, otherwise whoever's turn it is in `/beurt`, otherwise yourself |
+| `/waarheid [nummer]` | A truth question right away, or a specific one by its number from `/lijst` |
+| `/doen [nummer]` | A dare right away, or a specific one by its number |
+| `/beurt toevoegen\|lijst\|volgende` | Turn rotation: add a player, show the list, move to the next player |
+| `/beurt verwijder\|reset` | Remove a player from the rotation or clear it (Manage Server only) |
+| `/nooit [stelling]` | A "Never have I ever…" round; without a statement the bot picks one |
+| `/statistieken` | Statistics of the session in this channel |
 
-### Profielen
-| Command | Beschrijving |
+### Profiles
+| Command | Description |
 |---|---|
-| `/profiel [speler]` | Profiel met level, punten en achievements |
-| `/ranglijst` | Top 10 van deze server |
-| `/achievements` | Jouw achievements |
+| `/profiel [speler]` | Profile with level, points and achievements |
+| `/ranglijst` | Top 10 of this server |
+| `/achievements` | Your achievements |
 
 ### Fun
-| Command | Beschrijving |
+| Command | Description |
 |---|---|
-| `/liefdestaal` | Liefdestaaltest (10 vragen) |
-| `/persoonlijkheid` | Persoonlijkheidstest (9 vragen) |
-| `/relatietest speler` | Test met een andere speler hoe goed jullie bij elkaar passen |
+| `/liefdestaal` | Love language test (10 questions) |
+| `/persoonlijkheid` | Personality test (9 questions) |
+| `/relatietest speler` | Test how well you match with another player |
 
-### Beheer (alleen met Server beheren)
-De bot controleert zelf of je *Server beheren* hebt, ook als de command-permissies op de server zijn aangepast. Dat geldt ook voor de bevestigingsknop van `/verwijder`.
+### Management (Manage Server only)
+The bot checks *Manage Server* itself, even when the command permissions on the server have been changed. This also applies to the confirmation button of `/verwijder`.
 
-| Command | Beschrijving |
+| Command | Description |
 |---|---|
-| `/voeg-toe type tekst categorie` | Vraag of opdracht toevoegen in de gekozen categorie |
-| `/verwijder type nummer` | Vraag of opdracht verwijderen, met bevestiging |
-| `/lijst [type]` | Alle vragen met nummer |
-| `/reload` | Gebruikte vragen van de sessie in dit kanaal resetten |
-| `/reset` | Sessie in dit kanaal beëindigen |
-| `/sessie starten\|lijst\|wisselen\|pauzeren\|hervatten\|stoppen\|info` | Sessies beheren |
-| `/strafpunten speler aantal reden` | 1–100 punten aftrekken als straf; de bot plaatst een melding in het kanaal (zonder ping) |
+| `/voeg-toe type tekst categorie` | Add a question or dare in the chosen category |
+| `/verwijder type nummer` | Delete a question or dare, with confirmation |
+| `/lijst [type]` | All questions with their numbers |
+| `/reload` | Reset the used questions of the session in this channel |
+| `/reset` | End the session in this channel |
+| `/sessie starten\|lijst\|wisselen\|pauzeren\|hervatten\|stoppen\|info` | Manage sessions |
+| `/strafpunten speler aantal reden` | Deduct 1–100 points as a penalty; the bot posts a message in the channel (without a ping) |
 
 ---
 
-## Punten en levels
+## Points and levels
 
-| Actie | Punten |
+| Action | Points |
 |---|---|
-| Waarheid, Doen of Verrassing kiezen | +5 |
-| Ronde voltooien (Nieuwe ronde) | +5 |
+| Choose Truth, Dare or Random | +5 |
+| Finish a round (New round) | +5 |
 | Reroll | −5 |
-| Passen | −7 |
-| Stemmen bij `/nooit` | +3, één keer per stemming |
-| `/relatietest` voltooien | +15 (beide spelers), één keer per paar per dag |
-| `/strafpunten` (admin) | −1 t/m −100 |
+| Pass | −7 |
+| Vote in `/nooit` | +3, once per vote |
+| Finish `/relatietest` | +15 (both players), once per pair per day |
+| `/strafpunten` (admin) | −1 to −100 |
 
-Een ronde starten met `/wod` levert geen punten op. Alleen de speler van de ronde kan kiezen, rerollen, passen en een nieuwe ronde starten, en alleen die speler krijgt of verliest punten. Een gespeelde ronde levert netto +10 op. Reroll en Passen kosten alleen punten als er een nieuwe vraag is.
+Starting a round with `/wod` gives no points. Only the player of the round can choose, reroll, pass and start a new round, and only that player gains or loses points. A played round is worth +10 net. Reroll and Pass only cost points when there is a new question.
 
-Na **Nieuwe ronde** toont de bot wie heeft geantwoord en wie nu aan de beurt is. Met een rotatie (`/beurt`) is dat de volgende speler; zonder rotatie is de ronde open en is de eerste die kiest aan de beurt. Knoppen van rondes van vóór v1.10.0 werken niet meer: start een nieuwe ronde met `/wod`.
+After **New round** the bot shows who answered and whose turn it is now. With a rotation (`/beurt`) that is the next player; without one, the round is open and the first player to choose takes the turn.
 
-Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kanaal.
+Points never go below 0. A message appears in the channel when a player reaches a new level.
 
-| Level | Titel | Punten |
+| Level | Title | Points |
 |---|---|---|
 | 1 | Lafaard | 0–49 |
 | 2 | Deelnemer | 50–149 |
@@ -211,79 +229,85 @@ Punten gaan nooit onder 0. Bij een nieuw level verschijnt een melding in het kan
 
 ### Achievements
 
-| Achievement | Hoe |
+| Achievement | How |
 |---|---|
-| 👣 Eerste stap | Voor het eerst punten ontvangen |
-| 💪 Durfal | Level 3 (Durfal) bereikt |
-| 🔓 Onthullingsmaster | Level 5 (Onthulling) bereikt |
-| 👑 Legenda | Level 8 (Legenda) bereikt |
-| 🎲 Reroll addict | 10x gererold |
-| 😅 Schijterd | 5x gepast |
-| 🔥 Op dreef | 3 rondes voltooid |
-| 💑 Lovebird | `/relatietest` voltooid |
-| 🧠 Zelfinzicht | `/liefdestaal` of `/persoonlijkheid` voltooid |
-
-Bij de update naar v1.10.0 zijn de achievements eenmalig rechtgezet: level-achievements passen nu bij de 8 levels (wie een level niet haalt, verliest dat achievement; wie het wel haalt, krijgt het alsnog), en "Lafaard" heet voortaan "Schijterd".
+| 👣 Eerste stap | Receive points for the first time |
+| 💪 Durfal | Reach level 3 (Durfal) |
+| 🔓 Onthullingsmaster | Reach level 5 (Onthulling) |
+| 👑 Legenda | Reach level 8 (Legenda) |
+| 🎲 Reroll addict | Reroll 10 times |
+| 😅 Schijterd | Pass 5 times |
+| 🔥 Op dreef | Finish 3 rounds |
+| 💑 Lovebird | Finish `/relatietest` |
+| 🧠 Zelfinzicht | Finish `/liefdestaal` or `/persoonlijkheid` |
 
 ---
 
 ## Admin panel
 
-| Pagina | Wat je er doet |
+| Page | What you do there |
 |---|---|
-| **Vragen** | Vragen toevoegen, bewerken en verwijderen; categorie en DM-modus per vraag; CSV-import en -export |
-| **Nooit** | Eigen "Nooit heb ik…"-stellingen |
-| **Sessies** | Alle sessies bekijken en beëindigen |
-| **Statistieken** | Aantal vragen en actieve sessies, rerolls per speler, reset en reload |
-| **Ranglijst** | Top 10 met punten, level en achievements |
-| **Instellingen** | Cooldown, DM-modus, categorie per kanaal, categoriemappen aanmaken, alles terugzetten |
-| **Configuratie** | Alleen superadmins: redirect URI en frontend-URL van de login |
-| **Servers** | Alleen superadmins: alle servers, overschakelen, bot laten vertrekken |
+| **Vragen** (Questions) | Add, edit and delete questions; category and DM mode per question; CSV import and export |
+| **Nooit** | Custom "Never have I ever…" statements |
+| **Sessies** (Sessions) | View and end all sessions |
+| **Statistieken** (Statistics) | Number of questions and active sessions, rerolls per player, reset and reload |
+| **Ranglijst** (Leaderboard) | Top 10 with points, level and achievements |
+| **Instellingen** (Settings) | Cooldown, DM mode, category per channel, create category folders, reset everything |
+| **Configuratie** (Configuration) | Superadmins only: redirect URI and frontend URL of the login |
+| **Servers** | Superadmins only: all servers, switch, make the bot leave |
 
-Onderaan de zijbalk wissel je tussen Nederlands en Engels.
+Switch between Dutch and English at the bottom of the sidebar.
 
-Het panel controleert elke minuut opnieuw of je nog *Server beheren* hebt op de actieve server. Raak je die rechten kwijt, dan springt het panel naar een andere server, of naar het loginscherm als er geen server overblijft.
+Every minute the panel checks again whether you still have *Manage Server* on the active server. If you lose it, the panel switches to another server, or to the login screen when none is left.
 
 ---
 
-## Lokaal ontwikkelen
+## Updating and backups
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Everything the bot stores is in the data folder: `bot.db` (questions, sessions, points, settings) and `config.json`. Back up the whole folder `/app/data`, for example:
+
+```bash
+docker compose stop wod
+docker cp "$(docker compose ps -aq wod)":/app/data ./wod-backup-$(date +%F)
+docker compose start wod
+```
+
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed in each version and for upgrade notes.
+
+---
+
+## Local development
+
+Requires Node.js 22.
 
 ```bash
 npm ci
-cp .env.example .env        # en vul de waarden in
+cp .env.example .env        # fill in the values; use PANEL_URL=http://localhost:3001
 
 cd admin
 npm ci
-npm run build               # nodig: node index.js serveert admin/dist, en die staat niet in git
+npm run build               # required: the bot serves admin/dist, which is not in git
 cd ..
 
-node index.js               # bot + API op poort 3001, database in ./data
+npm start                   # bot + API on port 3001, database and config.json in ./data
 
-cd admin && npm run dev     # optioneel: panel met hot reload; /api en /auth gaan naar poort 3001
+cd admin && npm run dev     # optional: panel with hot reload; /api and /auth go to port 3001
 ```
 
-Gebruik `npm ci`, zodat je precies de versies uit de lock files krijgt. Alleen bij het toevoegen of bijwerken van een package gebruik je `npm install`; commit dan ook de bijgewerkte `package-lock.json`.
+Use `npm ci` so you get exactly the versions from the lock files. Only use `npm install` when adding or updating a package, and commit the updated `package-lock.json`.
 
-Gebruik bij voorkeur een aparte testbot en een testserver, zodat je de echte servers niet raakt. Voor de login lokaal: redirect `http://localhost:3001/auth/callback` in de Developer Portal en in `config.json`.
+Preferably use a separate test bot and test server, so your real servers aren't affected. For logging in locally, add the redirect `http://localhost:3001/auth/callback` in the Developer Portal.
 
-Door de CSRF-controle moet `frontendUrl` gelijk zijn aan het adres waarop je het panel opent: `http://localhost:3001` voor het gebouwde panel, of `http://localhost:5173` als je de Vite-devserver (`npm run dev`) gebruikt. Anders geven opslaan en uitloggen een 403.
+Because of the CSRF check, `frontendUrl` must match the address where you open the panel: `http://localhost:3001` for the built panel, or `http://localhost:5173` when you use the Vite dev server (`npm run dev`). Otherwise saving and logging out return a 403. Change it under Configuration or in `data/config.json`.
 
 ---
 
-## Bouwen en publiceren
+## Security and license
 
-GitHub Actions bouwt het image (`.github/workflows/docker.yml`):
+Found a vulnerability? See [`SECURITY.md`](SECURITY.md).
 
-- **Bij elke push en pull request** controleert de job `check` of `VERSION` en `package.json` gelijk zijn, of alle JS-bestanden geldig zijn en of het panel bouwt.
-- **Daarnaast draait `.github/workflows/ci.yml`** bij elke pull request en push naar `main`: een scan op gevoelige data (`scripts/check_sensitive.py`) en `npm ci` met een syntaxcontrole van de bot. Eigen zoektermen voor de scan staan in het repository-secret `SENSITIVE_TERMS` (één per regel), of lokaal in `.sensitive-terms` (niet in git).
-- **Bij een nieuwe `VERSION` op `main`** (er bestaat nog geen git-tag `v<VERSION>`) bouwt de job `release` het image, pusht `:<versie>` en `:latest` naar GHCR en maakt de git-tag `v<versie>` aan. Daarna maakt hij onder *Releases* een GitHub Release `v<versie>`, met de sectie `## [<versie>]` uit `CHANGELOG.md` als tekst (of automatische notities als die sectie ontbreekt). Staat de tag er al, dan wordt er niets gebouwd.
-- **Opnieuw bouwen** van dezelfde versie: *Actions* → *Docker image* → *Run workflow* met `force` aan. Ontbreekt de release nog, dan wordt die daarbij alsnog aangemaakt.
-- De actions draaien op Node 24; de controle van de bot gebruikt Node 22, net als het image.
-
-Voorwaarde: het package `wod` op GHCR geeft de repo schrijfrechten (*Package settings* → *Manage Actions access* → repository `hendriebuilds/wod` met rol **Write**).
-
-`./build-and-push.sh` is een noodoptie voor als Actions niet werkt. Het leest de versie uit `VERSION` en stopt als die afwijkt van `package.json`. **Commit en push eerst naar GitHub**, zodat image en repo altijd dezelfde versie hebben.
-
-## Versiebeheer
-
-Semantic versioning (MAJOR.MINOR.PATCH), vastgelegd in `VERSION` en `package.json`. Een nieuwe `VERSION` op `main` start de build van het image. Wat er per versie is veranderd, staat in `CHANGELOG.md`.
+MIT, see [`LICENSE`](LICENSE).

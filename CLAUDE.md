@@ -1,25 +1,26 @@
 # CLAUDE.md — WoD Bot
 
-Discord-bot voor "Waarheid of Doen" op meerdere servers. Naast het spel zijn er "Nooit heb ik…", beurtrotatie, sessies, profielen met punten, levels en achievements, en de fun-tests liefdestaal, persoonlijkheid en relatietest. Beheer gaat via een React-panel met Discord-login, per server, en voor een deel via slash commands.
+Discord-bot voor "Waarheid of Doen" op meerdere servers. Open source (MIT), ook zelf te hosten. Naast het spel zijn er "Nooit heb ik…", beurtrotatie, sessies, profielen met punten, levels en achievements, en de fun-tests liefdestaal, persoonlijkheid en relatietest. Beheer gaat via een React-panel met Discord-login, per server, en voor een deel via slash commands.
 
 ## Waar staat wat
 - **Foutmeldingen:** `errorcodes/` (oorzaak en oplossing van eerder gevonden fouten)
 - **Versie:** `VERSION` (en `version` in `package.json`, altijd gelijk houden)
-- **Wijzigingen per versie:** `CHANGELOG.md` (Keep a Changelog; de sectie van een versie is ook de tekst van de GitHub Release)
+- **Wijzigingen per versie:** `CHANGELOG.md` (Engels, Keep a Changelog; de sectie van een versie is ook de tekst van de GitHub Release)
 - **Omgevingsvariabelen:** `.env.example`
-- **Installatie en gebruik:** `README.md`
+- **Installatie en gebruik:** `README.md` (Engels) en `README.nl.md` (Nederlands), altijd allebei bijwerken
 
 ## Stack
 Node.js 22 + discord.js v14 als ES modules (`"type": "module"`), Express voor API en panel op één poort, eigen Discord OAuth2-flow met `fetch` en `express-session`, SQLite via better-sqlite3, React 18 + Vite voor het panel, Docker (`node:22-alpine`, multi-stage).
 
-Productie draait op Unraid als Docker-container, met het panel achter een reverse proxy (HTTPS). De database staat in een volume op `DATA_DIR`.
+Productie draait op Unraid als Docker-container, met het panel achter een reverse proxy (HTTPS). De database en `config.json` staan in een volume op `DATA_DIR`.
 
 ## Structuur
 - `index.js` — laadt eerst `dotenv/config` en `src/env.js`; client (intent `Guilds`, `allowedMentions: { parse: [] }`), globale fout-handlers, command loader (`src/commands/{game,fun,admin}`, opgeslagen als `{ mod, cat }`), globale registratie van slash commands bij `ready`, guild-events, `interactionCreate` (in `try/catch`, rechtencheck voor admin commands, dispatch naar commands en `handleButton`), start server en login
 - `src/env.js` — controle van verplichte omgevingsvariabelen bij het starten (stopt met exitcode 1)
 - `src/permissions.js` — `isGuildAdmin(interaction)` (*Server beheren*) en de melding `GEEN_RECHTEN`
 - `src/interactionError.js` — `replyError()`: fout loggen en de speler een ephemeral foutmelding geven
-- `src/config.js` — `config.json` laden/opslaan (`redirectUri`, `frontendUrl`), `SUPERADMIN_IDS`, `isSuperAdmin()`
+- `src/paden.js` — `DATA_DIR` (één plek, maakt de map aan)
+- `src/config.js` — `config.json` in `DATA_DIR` laden/opslaan (`redirectUri`, `frontendUrl`); volgorde: datamap → oud `config.json` naast de code (eenmalig overgenomen) → `PANEL_URL` → localhost; `SUPERADMIN_IDS`, `isSuperAdmin()`
 - `src/database.js` — tabellen en migraties, alle prepared statements in `stmts`, `dbGetInstellingen()`, standaard "Nooit"-stellingen, `syncGuildToDb()`, eenmalige migratie van `vragen.json`/`settings.json`
 - `src/game.js` — sessie-cache, beurtrotatie, `getVraag()`/`getVraagPool()` (met filter nooit een fallback), `CATEGORIEEN` + `categorieLabel()` (weergave), `STANDAARD_CATEGORIE`, `normaliseerCategorie()`, `isGeldigeCategorie()`, categoriefilter per kanaal, cooldown (per `guildId:userId`), data van de fun-tests, `LEVELS`, `voegPuntenToe()`, `checkAchievements()`
 - `src/embeds.js` — alle embeds en knoppenrijen (`build*Embed`, `build*Buttons`)
@@ -35,7 +36,9 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `admin/src/pages/` — `Login`, `Vragen`, `Nooit`, `Sessies`, `Statistieken`, `Ranglijst`, `Instellingen`, `Configuratie`, `Servers`
 - `admin/src/i18n/` — `nl.js` en `en.js`, dezelfde sleutels
 - `Dockerfile`, `.dockerignore`, `build-and-push.sh` (noodoptie)
-- `config.json` — alleen placeholders; in productie gemount op `/app/config.json`
+- `config.example.json` — voorbeeld met `panel.example.com`; het echte `config.json` staat in `DATA_DIR` en niet in git of het image
+- `README.md` (Engels) en `README.nl.md` (Nederlands) — zelfde inhoud en indeling, taalwissel bovenaan
+- `LICENSE` (MIT), `SECURITY.md`, `CHANGELOG.md` (Engels)
 - `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met de sectie uit `CHANGELOG.md`); actions op Node 24, controle met Node 22
 - `.github/workflows/ci.yml` — bij elke PR en push naar `main`: `scan` (gevoelige data, eigen termen uit het secret `SENSITIVE_TERMS`) en `test` (`npm ci` en syntaxcontrole)
 - `scripts/check_sensitive.py` — scan op IP-adressen, interne hostnames, secrets en eigen termen (`.sensitive-terms`, niet in git); `scan:ignore` op een regel slaat die over
@@ -132,9 +135,10 @@ Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `mig
 | `SESSION_SECRET` | Express-sessie secret, minimaal 32 tekens | vereist |
 | `SUPERADMIN_IDS` | Discord user-ID's, kommagescheiden (oud: `SUPERADMIN_ID`) | leeg |
 | `ADMIN_PORT` | Poort van panel en API | `3001` |
-| `DATA_DIR` | Map voor `bot.db` | `./data` (in de container `/app/data`) |
+| `PANEL_URL` | Openbare URL van het panel; alleen gebruikt als er nog geen `config.json` in `DATA_DIR` staat | leeg |
+| `DATA_DIR` | Map voor `bot.db` en `config.json` | `./data` (in de container `/app/data`, `VOLUME`) |
 
-In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>/auth/callback`) en `frontendUrl` (`<PANEL-URL>`).
+In `$DATA_DIR/config.json` (via het panel onder Configuratie, of eenmalig aangemaakt uit `PANEL_URL`): `redirectUri` (`<PANEL-URL>/auth/callback`) en `frontendUrl` (`<PANEL-URL>`). Log nooit de URL's zelf.
 
 ## Harde regels
 1. **Nooit infrastructuurdetails in de repo, in Discord-berichten of op het panel.** Geen IP-adressen, hostnames, domeinen, servernamen of netwerkindelingen, ook niet in docs, plannen, seed-data, `config.json` of commentaar. Gebruik placeholders zoals `<UNRAID-HOST>`, `<PANEL-URL>` en `<OLLAMA-HOST>`.
@@ -152,7 +156,7 @@ In `config.json` (via het panel onder Configuratie): `redirectUri` (`<PANEL-URL>
 12. **Tweetalig panel.** Elke zichtbare tekst in het panel gaat via `t()` en staat in `nl.js` én `en.js` onder dezelfde sleutel. Geen hardcoded tekst in JSX. De berichten in Discord zijn nu Nederlands; zodra de bot tweetalig is, geldt dezelfde regel voor de bot.
 13. **Punten en passief spel.** Het puntensysteem ontmoedigt rerollen en passen. Nieuwe acties die punten opleveren mogen niet te farmen zijn: geen punten voor herhaald klikken, aan/uit zetten of acties zonder echte deelname.
 14. **Eerst wat Node 22 zelf biedt** *(voorstel)*. Geen nieuw package als Node het al kan (`node:test`, `node --env-file`, `crypto`, `fetch`). Tests komen met `node:test`, zonder extra testframework.
-15. **`config.json` in de repo bevat alleen placeholders** *(voorstel)*. De echte URL's staan in het gemounte bestand in productie of in je lokale kopie; commit die nooit.
+15. **Geen `config.json` in de repo** *(voorstel)*. Alleen `config.example.json` met `panel.example.com`. Het echte bestand staat in `DATA_DIR` (in `.gitignore` en `.dockerignore`).
 
 ## Commando's
 Vul deze aan zodra er nieuwe bijkomen.
@@ -161,7 +165,7 @@ npm ci                          # dependencies bot (volgens package-lock.json)
 npm --prefix admin ci           # dependencies panel (volgens admin/package-lock.json)
 npm install <package>           # alleen bij toevoegen/bijwerken van een package; lock file meecommitten
 npm --prefix admin run build    # panel bouwen naar admin/dist (niet in git; nodig vóór node index.js)
-node index.js                   # lokaal starten (leest .env via dotenv; database in ./data; vereist gebouwd panel)
+node index.js                   # lokaal starten (leest .env via dotenv; database en config.json in ./data; vereist gebouwd panel)
 npm --prefix admin run dev      # panel lokaal op de Vite-devserver, /api en /auth gaan naar poort 3001
 
 # Controles (zelfde als CI; er zijn nog geen tests)

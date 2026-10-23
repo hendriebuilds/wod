@@ -57,12 +57,18 @@ export default function Instellingen() {
     try {
       const result = await api.createCategorieMappen();
       setFeedback({ type: 'success', msg: t('instellingen.aanmaakSuccess', { count: result.aangemaakt.length }) });
-      await laadChannelData();
-      const updated = await api.getInstellingen();
-      setValues(updated);
     } catch (err) {
-      setFeedback({ type: 'error', msg: t('instellingen.aanmaakMislukt', { error: err.message || t('onbekendeFout') }) });
+      const sleutel = {
+        geen_categorieen: 'instellingen.geenCategorieen',
+        categoriemappen_mislukt: 'instellingen.aanmaakMislukt',
+      }[err.code] || 'instellingen.aanmaakFout';
+      setFeedback({ type: 'error', msg: t(sleutel) });
     }
+    // Ook na een fout herladen: een deel van de kanalen kan al aangemaakt zijn
+    await laadChannelData();
+    try {
+      setValues(await api.getInstellingen());
+    } catch { /* de pagina toont de vorige waarden */ }
     setAanmaakBezig(false);
     setTimeout(() => setFeedback(null), 5000);
   };
