@@ -40,6 +40,7 @@ Productie draait als Docker-container, met het panel achter een reverse proxy (H
 - `LICENSE` (MIT), `SECURITY.md`, `CHANGELOG.md` (Engels)
 - `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, sectie `## [<versie>]` in `CHANGELOG.md` bij een nieuwe versie, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met de sectie uit `CHANGELOG.md`); actions op Node 24, controle met Node 22
 - `.github/workflows/ci.yml` — bij elke PR en push naar `main`: `scan` (gevoelige data, eigen termen uit het secret `SENSITIVE_TERMS`) en `test` (`npm ci` en syntaxcontrole)
+- `.github/dependabot.yml` — Dependabot: npm (root en `admin/`, wekelijks, minor/patch gegroepeerd) en GitHub Actions (maandelijks). Alle actions staan op een volledige commit-SHA met de versie als commentaar (`@<sha> # v7.0.1`); nieuwe actions ook zo
 - `scripts/check_sensitive.py` — scan op IP-adressen, interne hostnames, secrets en eigen termen (`.sensitive-terms`, niet in git); `scan:ignore` op een regel slaat die over
 - `package-lock.json`, `admin/package-lock.json` — lock files, altijd meecommitten
 
@@ -156,6 +157,7 @@ In `$DATA_DIR/config.json` (via het panel onder Configuratie, of eenmalig aangem
 13. **Punten en passief spel.** Het puntensysteem ontmoedigt rerollen en passen. Nieuwe acties die punten opleveren mogen niet te farmen zijn: geen punten voor herhaald klikken, aan/uit zetten of acties zonder echte deelname.
 14. **Eerst wat Node 22 zelf biedt** *(voorstel)*. Geen nieuw package als Node het al kan (`node:test`, `node --env-file`, `crypto`, `fetch`). Tests komen met `node:test`, zonder extra testframework.
 15. **Geen `config.json` in de repo** *(voorstel)*. Alleen `config.example.json` met `panel.example.com`. Het echte bestand staat in `DATA_DIR` (in `.gitignore` en `.dockerignore`).
+16. **Historie en tags blijven staan.** Op GitHub weigeren rulesets een force-push of het verwijderen van `main`, en het aanpassen of verwijderen van tags `v*`. Nieuwe tags maakt alleen de workflow `release`. Moet het toch een keer, dan zet de beheerder de ruleset tijdelijk op *Disabled*.
 
 ## Commando's
 Vul deze aan zodra er nieuwe bijkomen.

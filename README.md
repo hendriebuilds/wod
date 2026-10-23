@@ -278,6 +278,8 @@ docker compose start wod
 
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed in each version and for upgrade notes.
 
+**Coming from a version before 1.11.0?** `config.json` is no longer part of the image. Set `PANEL_URL` or put `config.json` in the data folder before you update, otherwise logging in to the panel stops working. See *Upgrading* under 1.11.0 in [`CHANGELOG.md`](CHANGELOG.md).
+
 ---
 
 ## Local development

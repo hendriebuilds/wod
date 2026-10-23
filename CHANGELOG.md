@@ -4,27 +4,42 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-23
+
 ### Added
 - Optional `PANEL_URL` environment variable: on the first start the bot creates `config.json` from it, so self-hosting needs no hand-written config file.
 - `config.example.json` and an English `.env.example` with every environment variable.
 - MIT license, `SECURITY.md` and this changelog.
 - README in English (`README.md`) and Dutch (`README.nl.md`).
 - CI on every pull request and push to `main`: a scan for sensitive data and a syntax check of the bot.
+- Dependabot for the npm packages of the bot and the panel and for GitHub Actions.
 
 ### Changed
 - `config.json` now lives in the data folder (`/app/data/config.json` in the container) and is no longer part of the image or the repository. Changes made in the panel under Configuration survive an update.
 - The Docker image declares `VOLUME /app/data` and sets `DATA_DIR=/app/data`.
-- Error messages in the panel for creating category folders and leaving a server no longer show technical details from Discord. Creating category folders on a server without questions now says to add questions first.
+- Creating category folders on a server without questions now says to add questions first.
 - `PANEL_URL` must be an `http` or `https` URL without `?` or `#`; otherwise the bot stops with a clear message.
 - An invalid `config.json` in the data folder stops the bot with a clear message instead of silently falling back to `localhost`.
 - The GitHub Release of a version uses its section from this changelog.
+- All GitHub Actions are pinned to a full commit SHA.
 
 ### Fixed
 - Saving under Configuration reported success even when `config.json` could not be written.
+- Error messages in the panel for creating category folders and leaving a server no longer show technical details from Discord.
 
 ### Upgrading
-- If you mounted your own `config.json` on `/app/config.json`, the bot copies it into the data folder on the first start and logs `Configuratie overgenomen uit het oude config.json`. After that you can remove the old mount.
-- Without an old `config.json` and without `PANEL_URL`, the panel falls back to `http://localhost:3001` and logging in through your own URL stops working. Set `PANEL_URL` or put `config.json` in the data folder before you update.
+The image no longer contains `config.json`. First check whether `config.json` has a mount of its own:
+
+```sh
+docker inspect <CONTAINER> --format '{{range .Mounts}}{{.Destination}} <- {{.Source}}{{println}}{{end}}'
+```
+
+If `/app/config.json` is in the list, the file is mounted separately: keep that mount for this update (second option below). If only `/app/data` is listed, the file exists only inside the old image and disappears with the update: use the first or third option. Do one of these before you update:
+- **Recommended:** set `PANEL_URL` to the URL of your panel (without a trailing `/`). On the first start the bot creates `config.json` in the data folder and logs `Configuratie aangemaakt vanuit PANEL_URL`.
+- If you mounted your own `config.json` on `/app/config.json`, keep the mount for this update. The bot copies it into the data folder on the first start and logs `Configuratie overgenomen uit het oude config.json en opgeslagen in de datamap`. Remove the old mount only after a restart logs `Configuratie geladen uit de datamap`.
+- Or copy the current file into the data folder yourself: `docker cp <CONTAINER>:/app/config.json <DATA-FOLDER>/config.json`, where `<DATA-FOLDER>` is the host folder mounted on `/app/data` (it also holds `bot.db`). Check that `redirectUri` and `frontendUrl` in the copied file are the URLs of your own panel: the bot does not check a `config.json` in the data folder for placeholders.
+
+Without `config.json` and without `PANEL_URL`, the panel falls back to `http://localhost:3001` and logging in through your own URL stops working. Once `config.json` is in the data folder, the log says `Configuratie geladen uit de datamap`.
 
 ## [1.10.1] - 2026-10-04
 
