@@ -680,9 +680,14 @@ app.put('/api/config', requireSuperAdmin, (req, res) => {
   if (!isGeldigeUrl(nieuweRedirect) || !new URL(nieuweRedirect).pathname.endsWith('/auth/callback') || !isGeldigeUrl(nieuweFrontend)) {
     return res.status(400).json({ error: 'Ongeldige URL.' });
   }
+  const vorige = { redirectUri: config.redirectUri, frontendUrl: config.frontendUrl };
   config.redirectUri = nieuweRedirect;
   config.frontendUrl = nieuweFrontend;
-  if (!slaConfigOp()) return res.status(500).json({ error: 'Opslaan mislukt.', code: 'opslaan_mislukt' });
+  if (!slaConfigOp()) {
+    // Niet opgeslagen: de oude waarden blijven gelden, anders blokkeert de CSRF-controle het panel
+    Object.assign(config, vorige);
+    return res.status(500).json({ error: 'Opslaan mislukt.', code: 'opslaan_mislukt' });
+  }
   res.json(config);
 });
 

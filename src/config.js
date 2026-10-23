@@ -26,6 +26,12 @@ function heeftUrls(data) {
   return typeof data?.frontendUrl === 'string' && typeof data?.redirectUri === 'string';
 }
 
+// Een object, en frontendUrl/redirectUri zijn (als ze er staan) strings
+function isGeldigeVorm(data) {
+  return data !== null && typeof data === 'object' && !Array.isArray(data)
+    && ['frontendUrl', 'redirectUri'].every(k => data[k] === undefined || typeof data[k] === 'string');
+}
+
 // Een oud bestand met placeholders (zoals in de repo tot v1.11.0) telt niet mee
 function isEchteConfig(data) {
   return heeftUrls(data) && !data.frontendUrl.includes('<') && !data.redirectUri.includes('<');
@@ -59,6 +65,10 @@ export function laadConfig() {
       data = leesConfig(CONFIG_PAD);
     } catch (err) {
       console.error(`❌ config.json in de datamap is ongeldig (${foutReden(err)}). De bot stopt.`);
+      process.exit(1);
+    }
+    if (!isGeldigeVorm(data)) {
+      console.error('❌ config.json in de datamap is ongeldig (frontendUrl en redirectUri moeten tekst zijn). De bot stopt.');
       process.exit(1);
     }
     Object.assign(config, data);
