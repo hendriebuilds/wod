@@ -3,7 +3,6 @@
 Discord-bot voor "Waarheid of Doen" op meerdere servers. Open source (MIT), ook zelf te hosten. Naast het spel zijn er "Nooit heb ik…", beurtrotatie, sessies, profielen met punten, levels en achievements, en de fun-tests liefdestaal, persoonlijkheid en relatietest. Beheer gaat via een React-panel met Discord-login, per server, en voor een deel via slash commands.
 
 ## Waar staat wat
-- **Foutmeldingen:** `errorcodes/` (oorzaak en oplossing van eerder gevonden fouten)
 - **Versie:** `VERSION` (en `version` in `package.json`, altijd gelijk houden)
 - **Wijzigingen per versie:** `CHANGELOG.md` (Engels, Keep a Changelog; de sectie van een versie is ook de tekst van de GitHub Release)
 - **Omgevingsvariabelen:** `.env.example`
@@ -12,7 +11,7 @@ Discord-bot voor "Waarheid of Doen" op meerdere servers. Open source (MIT), ook 
 ## Stack
 Node.js 22 + discord.js v14 als ES modules (`"type": "module"`), Express voor API en panel op één poort, eigen Discord OAuth2-flow met `fetch` en `express-session`, SQLite via better-sqlite3, React 18 + Vite voor het panel, Docker (`node:22-alpine`, multi-stage).
 
-Productie draait op Unraid als Docker-container, met het panel achter een reverse proxy (HTTPS). De database en `config.json` staan in een volume op `DATA_DIR`.
+Productie draait als Docker-container, met het panel achter een reverse proxy (HTTPS). De database en `config.json` staan in een volume op `DATA_DIR`.
 
 ## Structuur
 - `index.js` — laadt eerst `dotenv/config` en `src/env.js`; client (intent `Guilds`, `allowedMentions: { parse: [] }`), globale fout-handlers, command loader (`src/commands/{game,fun,admin}`, opgeslagen als `{ mod, cat }`), globale registratie van slash commands bij `ready`, guild-events, `interactionCreate` (in `try/catch`, rechtencheck voor admin commands, dispatch naar commands en `handleButton`), start server en login
@@ -39,7 +38,7 @@ Productie draait op Unraid als Docker-container, met het panel achter een revers
 - `config.example.json` — voorbeeld met `panel.example.com`; het echte `config.json` staat in `DATA_DIR` en niet in git of het image
 - `README.md` (Engels) en `README.nl.md` (Nederlands) — zelfde inhoud en indeling, taalwissel bovenaan
 - `LICENSE` (MIT), `SECURITY.md`, `CHANGELOG.md` (Engels)
-- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met de sectie uit `CHANGELOG.md`); actions op Node 24, controle met Node 22
+- `.github/workflows/docker.yml` — GitHub Actions: `check` (versies gelijk, sectie `## [<versie>]` in `CHANGELOG.md` bij een nieuwe versie, syntax, panel bouwt) en `release` (image bouwen en pushen bij een nieuwe `VERSION` op `main`, git-tag `v<versie>`, GitHub Release met de sectie uit `CHANGELOG.md`); actions op Node 24, controle met Node 22
 - `.github/workflows/ci.yml` — bij elke PR en push naar `main`: `scan` (gevoelige data, eigen termen uit het secret `SENSITIVE_TERMS`) en `test` (`npm ci` en syntaxcontrole)
 - `scripts/check_sensitive.py` — scan op IP-adressen, interne hostnames, secrets en eigen termen (`.sensitive-terms`, niet in git); `scan:ignore` op een regel slaat die over
 - `package-lock.json`, `admin/package-lock.json` — lock files, altijd meecommitten
@@ -141,12 +140,12 @@ Eenmalige datamigraties draaien bij het starten en staan daarna in de tabel `mig
 In `$DATA_DIR/config.json` (via het panel onder Configuratie, of eenmalig aangemaakt uit `PANEL_URL`): `redirectUri` (`<PANEL-URL>/auth/callback`) en `frontendUrl` (`<PANEL-URL>`). Log nooit de URL's zelf.
 
 ## Harde regels
-1. **Nooit infrastructuurdetails in de repo, in Discord-berichten of op het panel.** Geen IP-adressen, hostnames, domeinen, servernamen of netwerkindelingen, ook niet in docs, plannen, seed-data, `config.json` of commentaar. Gebruik placeholders zoals `<UNRAID-HOST>`, `<PANEL-URL>` en `<OLLAMA-HOST>`.
+1. **Nooit infrastructuurdetails in de repo, in Discord-berichten of op het panel.** Geen IP-adressen, hostnames, domeinen, servernamen of netwerkindelingen, ook niet in docs, plannen, seed-data, `config.json` of commentaar. Gebruik placeholders zoals `<PANEL-URL>` en `<HOST>`, of `example.com`.
 2. **Secrets alleen via omgevingsvariabelen.** Nooit in code, docs of logregels. `.env`, `data/` en `*.db` nooit committen.
 3. **Altijd JavaScript als ES modules.** Geen TypeScript, geen CommonJS, geen andere talen. In het panel alleen React + Vite met eigen CSS; geen UI-libraries of extra frameworks zonder toestemming.
 4. **Alles per server gescheiden.** Elke query op vragen, sessies, punten, instellingen en koppelingen filtert op `guild_id`. In de API komt de server altijd uit `req.session.activeGuildId`, nooit uit de body of URL (behalve `POST /api/guild`, dat controleert of je toegang hebt). Nieuwe in-memory state (zoals beurten) krijgt ook een sleutel per server, en waar nodig per kanaal.
 5. **Een nieuwe instelling komt op alle plekken tegelijk:** kolom met migratie in `src/database.js`, `dbGetInstellingen()`, `stmts.upsertInstellingen`, én elke aanroep daarvan (`PUT /api/instellingen`, `POST /api/reset-config`, `POST /api/categoriemappen/aanmaken`), `Instellingen.jsx`, `nl.js` + `en.js` en de tabel hierboven. `upsertInstellingen` gebruikt positionele parameters; een vergeten aanroep zet een instelling stil terug.
-6. **Databasewijzigingen:** nieuwe tabellen met `CREATE TABLE IF NOT EXISTS`. Nieuwe kolommen via een migratiestap **na** het aanmaken van de tabel, nooit alleen in de `CREATE TABLE`, anders mist een bestaande installatie de kolom (zie `errorcodes/user_levels.md`). Gebruik daarvoor `voegKolomToe(tabel, kolom, definitie)` in `src/database.js` (controleert met `PRAGMA table_info`), en zet de aanroep ná alle `CREATE TABLE`-blokken. Geen `ALTER TABLE` in een lege `catch`: mislukt een migratie, dan stopt de start met een duidelijke fout.
+6. **Databasewijzigingen:** nieuwe tabellen met `CREATE TABLE IF NOT EXISTS`. Nieuwe kolommen via een migratiestap **na** het aanmaken van de tabel, nooit alleen in de `CREATE TABLE`, anders mist een bestaande installatie de kolom en crasht de start met `table … has no column named …`. Gebruik daarvoor `voegKolomToe(tabel, kolom, definitie)` in `src/database.js` (controleert met `PRAGMA table_info`), en zet de aanroep ná alle `CREATE TABLE`-blokken. Geen `ALTER TABLE` in een lege `catch`: mislukt een migratie, dan stopt de start met een duidelijke fout.
    **Categorieën:** alleen waarden uit `CATEGORIEEN` (`src/game.js`), gecontroleerd met `isGeldigeCategorie()` na `normaliseerCategorie()`; standaard is `STANDAARD_CATEGORIE` (`algemeen`). Het schema van `vragen` heeft nog `DEFAULT '18+'`, maar die wordt nooit gebruikt: elke insert geeft de categorie zelf mee. De lijst `CATEGORIEEN` in `admin/src/pages/Vragen.jsx` gelijk houden.
 7. **Bestaande spelersdata blijft staan.** Wijzigingen in punten, levels of achievements resetten nooit bestaande punten. Pas liever drempels of tiers aan en beschrijf in `CHANGELOG.md` wat er met bestaande spelers gebeurt.
 8. **Rechten controleert de bot zelf.** `setDefaultMemberPermissions` bepaalt alleen wie een command ziet, en serverbeheerders kunnen dat aanpassen. Beheeracties (admin commands en knoppen als `verwijder_ja_<id>`) controleren daarom in de code op *Server beheren*. Nieuwe panel-routes altijd met `requireAuth` + `requireGuild`. Wat voor alle servers geldt (configuratie, servers) krijgt `requireSuperAdmin`.

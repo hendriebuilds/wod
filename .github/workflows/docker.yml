@@ -27,6 +27,8 @@ jobs:
       version: ${{ steps.versie.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # tags ophalen voor de changelog-controle
 
       - uses: actions/setup-node@v7
         with:
@@ -47,6 +49,18 @@ jobs:
             echo "::error::VERSION ($V) en package.json ($P) verschillen"; exit 1
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Sectie in CHANGELOG.md bij een nieuwe versie
+        env:
+          V: ${{ steps.versie.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "Tag v$V bestaat al: geen nieuwe versie."
+          elif awk -v kop="## [$V]" 'index($0, kop) == 1 {f=1} END {exit !f}' CHANGELOG.md; then
+            echo "CHANGELOG.md heeft een sectie [$V]."
+          else
+            echo "::error::Nieuwe versie $V zonder sectie '## [$V]' in CHANGELOG.md"; exit 1
+          fi
 
       - name: Syntaxcontrole bot
         run: |
