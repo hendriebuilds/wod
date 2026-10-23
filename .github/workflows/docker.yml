@@ -56,11 +56,16 @@ jobs:
         run: |
           if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
             echo "Tag v$V bestaat al: geen nieuwe versie."
-          elif awk -v kop="## [$V]" 'index($0, kop) == 1 {f=1} END {exit !f}' CHANGELOG.md; then
-            echo "CHANGELOG.md heeft een sectie [$V]."
-          else
-            echo "::error::Nieuwe versie $V zonder sectie '## [$V]' in CHANGELOG.md"; exit 1
+            exit 0
           fi
+          # Zelfde uitsnede als de stap "GitHub Release": van "## [<versie>]" tot de volgende "## ["
+          awk -v kop="## [$V]" 'index($0, kop) == 1 {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > release-notes.md
+          if ! awk -v kop="## [$V]" 'index($0, kop) == 1 {f=1} END {exit !f}' CHANGELOG.md; then
+            echo "::error::Nieuwe versie $V zonder sectie '## [$V]' in CHANGELOG.md"; exit 1
+          elif ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::Sectie '## [$V]' in CHANGELOG.md is leeg"; exit 1
+          fi
+          echo "CHANGELOG.md heeft een sectie [$V] met tekst."
 
       - name: Syntaxcontrole bot
         run: |
@@ -152,6 +157,7 @@ jobs:
           elif grep -q '[^[:space:]]' release-notes.md; then
             gh release create "v$V" --title "v$V" --notes-file release-notes.md --verify-tag
           else
+            echo "::warning::Geen tekst onder [$V] in CHANGELOG.md, notes worden gegenereerd."
             gh release create "v$V" --title "v$V" --generate-notes --verify-tag
           fi
 
